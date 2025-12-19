@@ -112,7 +112,37 @@ const Index = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-background relative overflow-hidden">
+    <div 
+      className={`min-h-screen bg-background relative overflow-hidden transition-all duration-300 ${
+        isDragActive ? "ring-4 ring-inset ring-primary/50 bg-primary/5" : ""
+      }`}
+      onDragEnter={handleDrag}
+      onDragLeave={handleDrag}
+      onDragOver={handleDrag}
+      onDrop={handleDrop}
+    >
+      {/* Full-screen drop overlay */}
+      {isDragActive && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-none"
+        >
+          <div className="text-center">
+            <motion.div
+              animate={{ scale: [1, 1.1, 1] }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
+              className="inline-flex items-center justify-center p-6 rounded-3xl bg-primary/20 border-2 border-dashed border-primary mb-4"
+            >
+              <Upload className="w-16 h-16 text-primary" />
+            </motion.div>
+            <h2 className="text-2xl font-bold text-primary">Drop files to compress</h2>
+            <p className="text-muted-foreground mt-2">Release to start compression</p>
+          </div>
+        </motion.div>
+      )}
+
       {/* Background decorations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 gradient-primary rounded-full blur-[128px] opacity-10" />
@@ -176,18 +206,12 @@ const Index = () => {
 
           {/* Drop Zone */}
           <motion.div
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
             className={`
               relative overflow-hidden rounded-2xl border-2 border-dashed 
               transition-all duration-300 cursor-pointer
               ${isCompressing 
                 ? "border-primary/50 bg-primary/5 cursor-wait" 
-                : isDragActive 
-                  ? "drop-zone-active border-primary" 
-                  : "border-border hover:border-primary/50 bg-card/50"
+                : "border-border hover:border-primary/50 bg-card/50"
               }
             `}
             whileHover={!isCompressing ? { scale: 1.01 } : {}}
@@ -206,9 +230,7 @@ const Index = () => {
                   animate={
                     isCompressing 
                       ? { rotate: 360 } 
-                      : isDragActive 
-                        ? { scale: 1.2, rotate: 10 } 
-                        : { scale: 1, rotate: 0 }
+                      : { scale: 1, rotate: 0 }
                   }
                   transition={
                     isCompressing 
@@ -231,9 +253,7 @@ const Index = () => {
                 <h3 className="text-xl font-semibold mb-2">
                   {isCompressing 
                     ? "Compressing..." 
-                    : isDragActive 
-                      ? "Drop to compress" 
-                      : "Drop files to compress"
+                    : "Drop files anywhere to compress"
                   }
                 </h3>
                 <p className="text-muted-foreground text-sm">
