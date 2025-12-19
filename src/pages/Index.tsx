@@ -277,11 +277,36 @@ const Index = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
-          className="text-center mt-12 text-sm text-muted-foreground"
+          className="text-center mt-12 text-sm text-muted-foreground space-y-3"
         >
           <p>
             All processing happens locally in your browser.{" "}
             <span className="text-primary">Your files never leave your device.</span>
+          </p>
+          <p>
+            Works offline —{" "}
+            <a 
+              href="https://github.com/pRizz/zip-it-up" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              free &amp; open source
+            </a>{" "}
+            on GitHub (MIT License)
+          </p>
+          <p className="text-xs">
+            Made by{" "}
+            <span className="text-foreground">Peter Ryszkiewicz</span>{" "}
+            with{" "}
+            <a 
+              href="https://lovable.dev" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              Lovable
+            </a>
           </p>
         </motion.footer>
       </div>
