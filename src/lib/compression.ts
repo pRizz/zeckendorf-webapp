@@ -44,7 +44,12 @@ export const compressFiles = async (
       }
     );
 
-    return { blob, filename: "compressed.zip" };
+    // Use original filename for single file, or first file's name for multiple
+    const baseName = files.length === 1 
+      ? files[0].name.replace(/\.[^/.]+$/, "") 
+      : files[0].name.replace(/\.[^/.]+$/, "") + "_and_more";
+    
+    return { blob, filename: `${baseName}.zip` };
   }
 
   if (format === "gzip" || format === "deflate") {
