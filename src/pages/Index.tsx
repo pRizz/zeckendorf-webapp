@@ -1,55 +1,17 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { FileArchive, Zap, Shield, Download } from "lucide-react";
+import { FileArchive, Zap, Shield, Download, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { DropZone } from "@/components/DropZone";
 import { CompressionOptions, CompressionFormat, CompressionLevel } from "@/components/CompressionOptions";
-import { CompressButton } from "@/components/CompressButton";
-import { ProgressBar } from "@/components/ProgressBar";
+import { CompressionLog, CompressionLogEntry } from "@/components/CompressionLog";
 import { compressFiles, downloadBlob } from "@/lib/compression";
 
 const Index = () => {
-  const [files, setFiles] = useState<File[]>([]);
   const [format, setFormat] = useState<CompressionFormat>("zip");
   const [level, setLevel] = useState<CompressionLevel>("balanced");
   const [isCompressing, setIsCompressing] = useState(false);
-  const [progress, setProgress] = useState(0);
-
-  const handleCompress = async () => {
-    if (files.length === 0) {
-      toast.error("Please add files to compress");
-      return;
-    }
-
-    // GZIP and DEFLATE only support single files
-    if ((format === "gzip" || format === "deflate") && files.length > 1) {
-      toast.error(`${format.toUpperCase()} only supports single file compression. Use ZIP for multiple files.`);
-      return;
-    }
-
-    setIsCompressing(true);
-    setProgress(0);
-
-    try {
-      const { blob, filename } = await compressFiles(files, format, level, setProgress);
-      downloadBlob(blob, filename);
-      
-      const originalSize = files.reduce((acc, f) => acc + f.size, 0);
-      const compressedSize = blob.size;
-      const ratio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
-      
-      toast.success(`Compressed! Saved ${ratio}% (${formatBytes(originalSize)} → ${formatBytes(compressedSize)})`);
-      
-      // Reset after successful compression
-      setFiles([]);
-      setProgress(0);
-    } catch (error) {
-      console.error("Compression error:", error);
-      toast.error("Failed to compress files. Please try again.");
-    } finally {
-      setIsCompressing(false);
-    }
-  };
+  const [isDragActive, setIsDragActive] = useState(false);
+  const [logEntries, setLogEntries] = useState<CompressionLogEntry[]>([]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return "0 B";
@@ -57,6 +19,90 @@ const Index = () => {
     const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  };
+
+  const handleCompress = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+
+    // Check format compatibility
+    if ((format === "gzip" || format === "deflate") && files.length > 1) {
+      toast.error(`${format.toUpperCase()} only supports single file compression. Use ZIP for multiple files.`);
+      return;
+    }
+
+    setIsCompressing(true);
+
+    try {
+      const { blob, filename } = await compressFiles(files, format, level, () => {});
+      downloadBlob(blob, filename);
+      
+      const originalSize = files.reduce((acc, f) => acc + f.size, 0);
+      const compressedSize = blob.size;
+      const ratio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+      
+      // Add to log
+      const newEntry: CompressionLogEntry = {
+        id: crypto.randomUUID(),
+        filename: files.length === 1 ? files[0].name : `${files.length} files`,
+        originalSize,
+        compressedSize,
+        compressionType: format,
+        compressionLevel: level,
+        timestamp: new Date(),
+      };
+      
+      setLogEntries(prev => [newEntry, ...prev]);
+      toast.success(`Saved ${ratio}% (${formatBytes(originalSize)} → ${formatBytes(compressedSize)})`);
+    } catch (error) {
+      console.error("Compression error:", error);
+      toast.error("Failed to compress files. Please try again.");
+    } finally {
+      setIsCompressing(false);
+    }
+  }, [format, level]);
+
+  const handleDrag = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setIsDragActive(true);
+    } else if (e.type === "dragleave") {
+      setIsDragActive(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragActive(false);
+
+      if (isCompressing) return;
+
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      if (droppedFiles.length > 0) {
+        handleCompress(droppedFiles);
+      }
+    },
+    [isCompressing, handleCompress]
+  );
+
+  const handleFileInput = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (isCompressing) return;
+      
+      const selectedFiles = Array.from(e.target.files || []);
+      if (selectedFiles.length > 0) {
+        handleCompress(selectedFiles);
+      }
+      // Reset input so the same file can be selected again
+      e.target.value = "";
+    },
+    [isCompressing, handleCompress]
+  );
+
+  const clearLog = () => {
+    setLogEntries([]);
   };
 
   const features = [
@@ -93,7 +139,7 @@ const Index = () => {
             <span className="text-gradient">Compress</span> Files
           </h1>
           <p className="text-muted-foreground text-lg max-w-md mx-auto">
-            Fast, private file compression directly in your browser. No uploads, no waiting.
+            Drop files to instantly compress. No uploads, no waiting.
           </p>
 
           {/* Features */}
@@ -120,8 +166,7 @@ const Index = () => {
           transition={{ delay: 0.4 }}
           className="space-y-6"
         >
-          <DropZone files={files} onFilesChange={setFiles} />
-          
+          {/* Compression Options */}
           <CompressionOptions
             format={format}
             level={level}
@@ -129,13 +174,84 @@ const Index = () => {
             onLevelChange={setLevel}
           />
 
-          {isCompressing && <ProgressBar progress={progress} />}
+          {/* Drop Zone */}
+          <motion.div
+            onDragEnter={handleDrag}
+            onDragLeave={handleDrag}
+            onDragOver={handleDrag}
+            onDrop={handleDrop}
+            className={`
+              relative overflow-hidden rounded-2xl border-2 border-dashed 
+              transition-all duration-300 cursor-pointer
+              ${isCompressing 
+                ? "border-primary/50 bg-primary/5 cursor-wait" 
+                : isDragActive 
+                  ? "drop-zone-active border-primary" 
+                  : "border-border hover:border-primary/50 bg-card/50"
+              }
+            `}
+            whileHover={!isCompressing ? { scale: 1.01 } : {}}
+            whileTap={!isCompressing ? { scale: 0.99 } : {}}
+          >
+            <label className={`block ${isCompressing ? "cursor-wait" : "cursor-pointer"} p-12`}>
+              <input
+                type="file"
+                multiple
+                onChange={handleFileInput}
+                className="hidden"
+                disabled={isCompressing}
+              />
+              <div className="flex flex-col items-center justify-center text-center">
+                <motion.div
+                  animate={
+                    isCompressing 
+                      ? { rotate: 360 } 
+                      : isDragActive 
+                        ? { scale: 1.2, rotate: 10 } 
+                        : { scale: 1, rotate: 0 }
+                  }
+                  transition={
+                    isCompressing 
+                      ? { repeat: Infinity, duration: 1, ease: "linear" } 
+                      : { type: "spring", stiffness: 300 }
+                  }
+                  className="mb-6"
+                >
+                  <div className="relative">
+                    <div className={`absolute inset-0 gradient-primary rounded-full blur-2xl opacity-30 ${isCompressing ? "" : "animate-pulse-glow"}`} />
+                    <div className="relative p-5 rounded-full bg-secondary">
+                      {isCompressing ? (
+                        <Loader2 className="w-10 h-10 text-primary" />
+                      ) : (
+                        <Upload className="w-10 h-10 text-primary" />
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+                <h3 className="text-xl font-semibold mb-2">
+                  {isCompressing 
+                    ? "Compressing..." 
+                    : isDragActive 
+                      ? "Drop to compress" 
+                      : "Drop files to compress"
+                  }
+                </h3>
+                <p className="text-muted-foreground text-sm">
+                  {isCompressing 
+                    ? "Your download will start automatically" 
+                    : <>or <span className="text-primary font-medium">click to browse</span></>
+                  }
+                </p>
+              </div>
+            </label>
 
-          <CompressButton
-            disabled={files.length === 0 || isCompressing}
-            isCompressing={isCompressing}
-            onClick={handleCompress}
-          />
+            {/* Decorative elements */}
+            <div className="absolute top-4 right-4 w-20 h-20 gradient-primary rounded-full blur-3xl opacity-10 animate-spin-slow" />
+            <div className="absolute bottom-4 left-4 w-16 h-16 gradient-primary rounded-full blur-2xl opacity-10 animate-float" />
+          </motion.div>
+
+          {/* Compression Log */}
+          <CompressionLog entries={logEntries} onClear={clearLog} />
         </motion.main>
 
         {/* Footer */}
