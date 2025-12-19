@@ -2,16 +2,16 @@ import { useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import { FileArchive, Zap, Shield, Download, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
-import { CompressionOptions, CompressionFormat, CompressionLevel } from "@/components/CompressionOptions";
+import { CompressionOptions, CompressionFormat } from "@/components/CompressionOptions";
 import { CompressionLog, CompressionLogEntry } from "@/components/CompressionLog";
 import { compressFiles, downloadBlob } from "@/lib/compression";
 
 const Index = () => {
   const [format, setFormat] = useState<CompressionFormat>("zip");
-  const [level, setLevel] = useState<CompressionLevel>("balanced");
   const [isCompressing, setIsCompressing] = useState(false);
   const [isDragActive, setIsDragActive] = useState(false);
   const [logEntries, setLogEntries] = useState<CompressionLogEntry[]>([]);
+  const level = "balanced";
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return "0 B";
@@ -199,9 +199,7 @@ const Index = () => {
           {/* Compression Options */}
           <CompressionOptions
             format={format}
-            level={level}
             onFormatChange={setFormat}
-            onLevelChange={setLevel}
           />
 
           {/* Drop Zone */}
