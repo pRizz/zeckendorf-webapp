@@ -5,6 +5,8 @@
   "type": "module",
   "packageManager": "pnpm@9.12.0",
   "scripts": {
+    "init-git-submodules": "git submodule update --init --recursive",
+    "update-zeckendorf-rs-dep": "scripts/update-zeckendorf-rs-dep.sh",
     "dev": "vite",
     "build": "vite build",
     "build:dev": "vite build --mode development",
