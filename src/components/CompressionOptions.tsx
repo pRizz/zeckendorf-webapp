@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/select";
 import { Settings2 } from "lucide-react";
 
-export type CompressionFormat = "zip" | "gzip" | "deflate";
+export type CompressionFormat = "zip" | "gzip" | "deflate" | "zeckendorf_be" | "zeckendorf_le";
 export type CompressionLevel = "fast" | "balanced" | "maximum";
 
 interface CompressionOptionsProps {
@@ -19,6 +19,8 @@ const formats: { value: CompressionFormat; label: string; description: string }[
   { value: "zip", label: "ZIP", description: "Universal compatibility" },
   { value: "gzip", label: "GZIP", description: "Single file compression" },
   { value: "deflate", label: "DEFLATE", description: "Raw compression" },
+  { value: "zeckendorf_be", label: "Zeckendorf (BE)", description: "Fibonacci-based, interpret input as a big endian integer" },
+  { value: "zeckendorf_le", label: "Zeckendorf (LE)", description: "Fibonacci-based, interpret input as a little endian integer" },
 ];
 
 export const CompressionOptions = ({

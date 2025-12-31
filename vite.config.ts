@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
+import wasm from "vite-plugin-wasm";
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
@@ -11,6 +12,7 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
   },
   plugins: [
+    wasm(),
     react(),
     mode === "development" && componentTagger(),
     VitePWA({
@@ -46,7 +48,7 @@ export default defineConfig(({ mode }) => ({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff,woff2,wasm}"],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -80,6 +82,9 @@ export default defineConfig(({ mode }) => ({
       },
     }),
   ].filter(Boolean),
+  build: {
+    target: "es2022", // Supports top-level await for the generated wasm code
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

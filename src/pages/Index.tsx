@@ -25,7 +25,7 @@ const Index = () => {
     if (files.length === 0) return;
 
     // Check format compatibility
-    if ((format === "gzip" || format === "deflate") && files.length > 1) {
+    if ((format === "gzip" || format === "deflate" || format === "zeckendorf_be" || format === "zeckendorf_le") && files.length > 1) {
       toast.error(`${format.toUpperCase()} only supports single file compression. Use ZIP for multiple files.`);
       return;
     }

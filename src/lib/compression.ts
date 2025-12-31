@@ -1,5 +1,6 @@
 import JSZip from "jszip";
 import pako from "pako";
+import { zeckendorf_compress_be, zeckendorf_compress_le } from "@/../zeckendorf_rs_wasm/zeckendorf_rs.js";
 import type { CompressionFormat, CompressionLevel } from "@/components/CompressionOptions";
 
 const getLevelValue = (level: CompressionLevel): number => {
@@ -76,6 +77,44 @@ export const compressFiles = async (
     return {
       blob: new Blob([new Uint8Array(compressed)]),
       filename,
+    };
+  }
+
+  if (format === "zeckendorf_be") {
+    // For single file compression using Zeckendorf algorithm (interpret input as a big endian integer)
+    const file = files[0];
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+
+    onProgress(30);
+
+    // Compress using Zeckendorf algorithm (interpret input as a big endian integer)
+    const compressed = zeckendorf_compress_be(uint8Array);
+
+    onProgress(100);
+
+    return {
+      blob: new Blob([new Uint8Array(compressed)]),
+      filename: `${file.name}.zbe`,
+    };
+  }
+
+  if (format === "zeckendorf_le") {
+    // For single file compression using Zeckendorf algorithm (interpret input as a little endian integer)
+    const file = files[0];
+    const arrayBuffer = await file.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+
+    onProgress(30);
+
+    // Compress using Zeckendorf algorithm (interpret input as a little endian integer)
+    const compressed = zeckendorf_compress_le(uint8Array);
+
+    onProgress(100);
+
+    return {
+      blob: new Blob([new Uint8Array(compressed)]),
+      filename: `${file.name}.zle`,
     };
   }
 
