@@ -663,7 +663,7 @@ const Index = (): JSX.Element => {
               >
                 Download a well compressible file (little endian)
               </button>
-              {" "}to try it out.
+              {" "}to try it out. Due to time and memory pressure, it is recommended to only attempt compressing files no greater than about 15KB. Wanna help optimize the algorithm? Check out the <a href="https://github.com/pRizz/zeckendorf" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Rust code</a> and submit a pull request!
             </p>
             <motion.div
               className={`
