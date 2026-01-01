@@ -18,7 +18,8 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      {/* basename is set to the base URL of the app, which is used to correctly handle routing in GitHub Pages */}
+      <BrowserRouter basename={import.meta.env.BASE_URL}>
         {/* Sticky Header */}
         <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
           <div className="container flex h-16 items-center justify-between px-30">
