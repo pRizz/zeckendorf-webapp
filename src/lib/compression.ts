@@ -189,15 +189,18 @@ export const decompressUint8Array = async (
 export const compressFiles = async (
   files: File[],
   format: "zeckendorf_be" | "zeckendorf_le",
-  level: "fast" | "balanced" | "maximum",
+  _level: "fast" | "balanced" | "maximum",
   onProgress: (progress: number) => void
 ): Promise<{ blob: Blob; filename: string }> => {
   if (files.length !== 1) {
     throw new Error("Zeckendorf compression only supports single file compression");
   }
 
-  const file = files[0];
-  const result = await compressFileWithZeckendorf(file, onProgress);
+  const maybeFile = files[0];
+  if (!maybeFile) {
+    throw new Error("No file provided");
+  }
+  const result = await compressFileWithZeckendorf(maybeFile, onProgress);
 
   if (!result.success) {
     throw new Error("Compression failed");

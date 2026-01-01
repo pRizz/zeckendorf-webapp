@@ -71,7 +71,9 @@ const Index = () => {
       return;
     }
 
-    const file = files[0];
+    const maybeFile = files[0];
+    if (!maybeFile) return;
+    const file = maybeFile;
     setIsCompressing(true);
 
     try {
@@ -152,7 +154,9 @@ const Index = () => {
       return;
     }
 
-    const file = files[0];
+    const maybeFile = files[0];
+    if (!maybeFile) return;
+    const file = maybeFile;
     setIsDecompressing(true);
 
     try {
@@ -484,12 +488,6 @@ const Index = () => {
       setGeneratingType(null);
     }
   }, [validateSize]);
-
-  const features = [
-    { icon: Zap, label: "Fast", desc: "Browser-powered" },
-    { icon: Shield, label: "Private", desc: "No uploads" },
-    { icon: Download, label: "Instant", desc: "Auto download" },
-  ];
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
