@@ -12,3 +12,19 @@ export const formatBytes = (bytes: number): string => {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
 };
+
+export const formatElapsedTimeShort = (milliseconds: number): string => {
+  const seconds = milliseconds / 1000;
+  // Truncate milliseconds if time is greater than one second
+  if (seconds > 1) {
+    return `${seconds.toFixed(0)}s`;
+  }
+  // Show milliseconds precision for times <= 1 second
+  return `${seconds.toFixed(1)}s`;
+};
+
+export const formatElapsedTimeLong = (milliseconds: number): string => {
+  const seconds = milliseconds / 1000;
+  // Always show 3 decimal places
+  return `${seconds.toFixed(3)}s`;
+};

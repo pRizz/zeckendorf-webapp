@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp, Trash2, FileArchive, Check, X, FileDown, FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, formatElapsedTimeLong } from "@/lib/utils";
 
 export interface CompressionLogEntry {
   id: string;
@@ -17,6 +17,7 @@ export interface CompressionLogEntry {
   error?: string; // Only for failed entries
   beSize?: number; // Big endian compressed size (for failed compression attempts)
   leSize?: number; // Little endian compressed size (for failed compression attempts)
+  elapsedTime?: number; // Elapsed time in milliseconds
   timestamp: Date;
 }
 
@@ -185,6 +186,11 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.E
                           <span className="inline-block px-2 py-0.5 text-xs font-mono rounded bg-secondary text-secondary-foreground mb-1">
                             {entry.compressionType.toUpperCase()}
                           </span>
+                        )}
+                        {entry.elapsedTime !== undefined && (
+                          <p className="text-xs text-muted-foreground mb-1">
+                            Took {formatElapsedTimeLong(entry.elapsedTime)}
+                          </p>
                         )}
                         <p className="text-xs text-muted-foreground">
                           {formatDateTime(entry.timestamp)}

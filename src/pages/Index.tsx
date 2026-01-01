@@ -4,7 +4,7 @@ import { FileArchive, Loader2, Upload, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { CompressionLog, CompressionLogEntry } from "@/components/CompressionLog";
 import { compressFileWithZeckendorf, decompressFileWithZeckendorf, downloadBlob, decompressUint8Array } from "@/lib/compression";
-import { formatBytes } from "@/lib/utils";
+import { formatBytes, formatElapsedTimeShort } from "@/lib/utils";
 import { MEDIUM_ARTICLE_URL, MAX_GENERATABLE_FILE_SIZE } from "@/lib/constants";
 import {
   Dialog,
@@ -33,6 +33,9 @@ const Index = (): JSX.Element => {
   const [customDataDialogOpen, setCustomDataDialogOpen] = useState(false);
   const [customDataSize, setCustomDataSize] = useState<string>("");
   const [generatingType, setGeneratingType] = useState<"wellCompressibleBE" | "wellCompressibleLE" | "compressedBE" | "compressedLE" | null>(null);
+  const [elapsedMilliseconds, setElapsedMilliseconds] = useState<number>(0);
+  const [compressElapsedMilliseconds, setCompressElapsedMilliseconds] = useState<number>(0);
+  const [decompressElapsedMilliseconds, setDecompressElapsedMilliseconds] = useState<number>(0);
 
   const STORAGE_KEY = "zeckendorf_compression_log";
 
@@ -70,6 +73,66 @@ const Index = (): JSX.Element => {
     }
   }, [logEntries]);
 
+  // Track elapsed time during generation
+  useEffect(() => {
+    if (generatingType === null) {
+      setElapsedMilliseconds(0);
+      return;
+    }
+
+    const startTime = Date.now();
+    setElapsedMilliseconds(0);
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      setElapsedMilliseconds(elapsed);
+    }, 100);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [generatingType]);
+
+  // Track elapsed time during compression
+  useEffect(() => {
+    if (!isCompressing) {
+      setCompressElapsedMilliseconds(0);
+      return;
+    }
+
+    const startTime = Date.now();
+    setCompressElapsedMilliseconds(0);
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      setCompressElapsedMilliseconds(elapsed);
+    }, 100);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isCompressing]);
+
+  // Track elapsed time during decompression
+  useEffect(() => {
+    if (!isDecompressing) {
+      setDecompressElapsedMilliseconds(0);
+      return;
+    }
+
+    const startTime = Date.now();
+    setDecompressElapsedMilliseconds(0);
+
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      setDecompressElapsedMilliseconds(elapsed);
+    }, 100);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isDecompressing]);
+
   const handleCompress = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
 
@@ -82,9 +145,11 @@ const Index = (): JSX.Element => {
     if (!maybeFile) return;
     const file = maybeFile;
     setIsCompressing(true);
+    const startTime = Date.now();
 
     try {
       const result = await compressFileWithZeckendorf(file, () => {});
+      const elapsedTime = Date.now() - startTime;
 
       if (result.success) {
         downloadBlob(result.blob, result.filename);
@@ -103,6 +168,7 @@ const Index = (): JSX.Element => {
           compressionType: `zeckendorf_${result.endianness}`,
           compressionLevel: "auto",
           success: true,
+          elapsedTime,
           timestamp: new Date(),
         };
         
@@ -119,6 +185,7 @@ const Index = (): JSX.Element => {
           error: "Compression did not reduce file size",
           beSize: result.beSize,
           leSize: result.leSize,
+          elapsedTime,
           timestamp: new Date(),
         };
         
@@ -133,6 +200,7 @@ const Index = (): JSX.Element => {
         });
       }
     } catch (error) {
+      const elapsedTime = Date.now() - startTime;
       console.error("Compression error:", error);
       
       // Log failed compression attempt with error
@@ -143,6 +211,7 @@ const Index = (): JSX.Element => {
         originalSize: file.size,
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
+        elapsedTime,
         timestamp: new Date(),
       };
       
@@ -165,9 +234,11 @@ const Index = (): JSX.Element => {
     if (!maybeFile) return;
     const file = maybeFile;
     setIsDecompressing(true);
+    const startTime = Date.now();
 
     try {
       const result = await decompressFileWithZeckendorf(file, () => {});
+      const elapsedTime = Date.now() - startTime;
 
       if ("error" in result) {
         // Log failed decompression attempt
@@ -178,6 +249,7 @@ const Index = (): JSX.Element => {
           originalSize: file.size,
           success: false,
           error: result.error,
+          elapsedTime,
           timestamp: new Date(),
         };
         
@@ -194,6 +266,7 @@ const Index = (): JSX.Element => {
           originalSize: file.size,
           decompressedSize: result.blob.size,
           success: true,
+          elapsedTime,
           timestamp: new Date(),
         };
         
@@ -201,6 +274,7 @@ const Index = (): JSX.Element => {
         toast.success(`Decompressed file: ${result.filename}`);
       }
     } catch (error) {
+      const elapsedTime = Date.now() - startTime;
       console.error("Decompression error:", error);
       
       // Log failed decompression attempt with error
@@ -211,6 +285,7 @@ const Index = (): JSX.Element => {
         originalSize: file.size,
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
+        elapsedTime,
         timestamp: new Date(),
       };
       
@@ -642,7 +717,7 @@ const Index = (): JSX.Element => {
                   </motion.div>
                   <h3 className="text-xl font-semibold mb-2">
                     {isCompressing 
-                      ? "Compressing..." 
+                      ? `Compressing... ${formatElapsedTimeShort(compressElapsedMilliseconds)}` 
                       : "Drop file to compress"
                     }
                   </h3>
@@ -735,7 +810,7 @@ const Index = (): JSX.Element => {
                   </motion.div>
                   <h3 className="text-xl font-semibold mb-2">
                     {isDecompressing 
-                      ? "Decompressing..." 
+                      ? `Decompressing... ${formatElapsedTimeShort(decompressElapsedMilliseconds)}` 
                       : "Drop file to decompress"
                     }
                   </h3>
@@ -927,7 +1002,7 @@ const Index = (): JSX.Element => {
                   {generatingType === "wellCompressibleBE" ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Generating...
+                      Generating... {formatElapsedTimeShort(elapsedMilliseconds)}
                     </>
                   ) : (
                     "Well Compressible (BE)"
@@ -944,7 +1019,7 @@ const Index = (): JSX.Element => {
                   {generatingType === "wellCompressibleLE" ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Generating...
+                      Generating... {formatElapsedTimeShort(elapsedMilliseconds)}
                     </>
                   ) : (
                     "Well Compressible (LE)"
@@ -964,7 +1039,7 @@ const Index = (): JSX.Element => {
                   {generatingType === "compressedBE" ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Generating...
+                      Generating... {formatElapsedTimeShort(elapsedMilliseconds)}
                     </>
                   ) : (
                     "Compressed (BE)"
@@ -981,7 +1056,7 @@ const Index = (): JSX.Element => {
                   {generatingType === "compressedLE" ? (
                     <>
                       <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Generating...
+                      Generating... {formatElapsedTimeShort(elapsedMilliseconds)}
                     </>
                   ) : (
                     "Compressed (LE)"
