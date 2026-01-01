@@ -1,124 +1,112 @@
-import JSZip from "jszip";
-import pako from "pako";
-import { zeckendorf_compress_be, zeckendorf_compress_le } from "@/../zeckendorf_rs_wasm/zeckendorf_rs.js";
-import type { CompressionFormat, CompressionLevel } from "@/components/CompressionOptions";
+import { zeckendorf_compress_be, zeckendorf_compress_le, zeckendorf_decompress_be, zeckendorf_decompress_le } from "@/../zeckendorf_rs_wasm/zeckendorf_rs.js";
 
-const getLevelValue = (level: CompressionLevel): number => {
-  switch (level) {
-    case "fast":
-      return 1;
-    case "balanced":
-      return 5;
-    case "maximum":
-      return 9;
-    default:
-      return 5;
+export type CompressionResult = 
+  | { success: true; blob: Blob; filename: string; endianness: "be" | "le" }
+  | { success: false; originalSize: number; beSize: number; leSize: number };
+
+/**
+ * Compresses a file using Zeckendorf compression, automatically selecting the best endianness.
+ * Returns the compressed file if either endianness produces a smaller file, otherwise returns failure info.
+ */
+export const compressFileWithZeckendorf = async (
+  file: File,
+  onProgress: (progress: number) => void
+): Promise<CompressionResult> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const uint8Array = new Uint8Array(arrayBuffer);
+  const originalSize = file.size;
+
+  onProgress(30);
+
+  // Try big endian compression first
+  const compressedBE = zeckendorf_compress_be(uint8Array);
+  const beSize = compressedBE.length;
+
+  onProgress(60);
+
+  // Try little endian compression
+  const compressedLE = zeckendorf_compress_le(uint8Array);
+  const leSize = compressedLE.length;
+
+  onProgress(90);
+
+  // Check if either compression is smaller than original
+  if (beSize < originalSize) {
+    // Big endian is better
+    const baseName = file.name.replace(/\.[^/.]+$/, "");
+    return {
+      success: true,
+      blob: new Blob([new Uint8Array(compressedBE)]),
+      filename: `${baseName}.zbe`,
+      endianness: "be",
+    };
   }
+
+  if (leSize < originalSize) {
+    // Little endian is better
+    const baseName = file.name.replace(/\.[^/.]+$/, "");
+    return {
+      success: true,
+      blob: new Blob([new Uint8Array(compressedLE)]),
+      filename: `${baseName}.zle`,
+      endianness: "le",
+    };
+  }
+
+  // Both compressions produced larger files
+  onProgress(100);
+  return {
+    success: false,
+    originalSize,
+    beSize,
+    leSize,
+  };
 };
 
-export const compressFiles = async (
-  files: File[],
-  format: CompressionFormat,
-  level: CompressionLevel,
+/**
+ * Decompresses a file based on its extension (.zbe for big endian, .zle for little endian).
+ */
+export const decompressFileWithZeckendorf = async (
+  file: File,
   onProgress: (progress: number) => void
-): Promise<{ blob: Blob; filename: string }> => {
-  const compressionLevel = getLevelValue(level);
+): Promise<{ blob: Blob; filename: string } | { error: string }> => {
+  const arrayBuffer = await file.arrayBuffer();
+  const uint8Array = new Uint8Array(arrayBuffer);
 
-  if (format === "zip") {
-    const zip = new JSZip();
-    
-    // Add files to zip
-    for (const file of files) {
-      const arrayBuffer = await file.arrayBuffer();
-      zip.file(file.name, arrayBuffer);
-    }
+  onProgress(30);
 
-    // Generate zip with progress
-    const blob = await zip.generateAsync(
-      { 
-        type: "blob",
-        compression: "DEFLATE",
-        compressionOptions: { level: compressionLevel }
-      },
-      (metadata) => {
-        onProgress(metadata.percent);
-      }
-    );
+  // Detect compression type from file extension
+  const fileName = file.name.toLowerCase();
+  let decompressed: Uint8Array;
+  let originalFilename: string;
 
-    // Use original filename for single file, or first file's name for multiple
-    const baseName = files.length === 1 
-      ? files[0].name.replace(/\.[^/.]+$/, "") 
-      : files[0].name.replace(/\.[^/.]+$/, "") + "_and_more";
-    
-    return { blob, filename: `${baseName}.zip` };
-  }
+  onProgress(100);
 
-  if (format === "gzip" || format === "deflate") {
-    // For single file compression
-    const file = files[0];
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-
-    onProgress(30);
-
-    let compressed: Uint8Array;
-    let filename: string;
-
-    if (format === "gzip") {
-      compressed = pako.gzip(uint8Array, { level: compressionLevel });
-      filename = `${file.name}.gz`;
-    } else {
-      compressed = pako.deflate(uint8Array, { level: compressionLevel });
-      filename = `${file.name}.deflate`;
-    }
-
-    onProgress(100);
+  if (fileName.endsWith(".zbe")) {
+    // Big endian decompression
+    decompressed = zeckendorf_decompress_be(uint8Array);
+    originalFilename = file.name.replace(/\.zbe$/i, "");
 
     return {
-      blob: new Blob([new Uint8Array(compressed)]),
-      filename,
+      blob: new Blob([new Uint8Array(decompressed)]),
+      filename: originalFilename,
+    };
+  }
+  
+  if (fileName.endsWith(".zle")) {
+    // Little endian decompression
+    decompressed = zeckendorf_decompress_le(uint8Array);
+    originalFilename = file.name.replace(/\.zle$/i, "");
+
+    return {
+      blob: new Blob([new Uint8Array(decompressed)]),
+      filename: originalFilename,
     };
   }
 
-  if (format === "zeckendorf_be") {
-    // For single file compression using Zeckendorf algorithm (interpret input as a big endian integer)
-    const file = files[0];
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-
-    onProgress(30);
-
-    // Compress using Zeckendorf algorithm (interpret input as a big endian integer)
-    const compressed = zeckendorf_compress_be(uint8Array);
-
-    onProgress(100);
-
-    return {
-      blob: new Blob([new Uint8Array(compressed)]),
-      filename: `${file.name}.zbe`,
-    };
-  }
-
-  if (format === "zeckendorf_le") {
-    // For single file compression using Zeckendorf algorithm (interpret input as a little endian integer)
-    const file = files[0];
-    const arrayBuffer = await file.arrayBuffer();
-    const uint8Array = new Uint8Array(arrayBuffer);
-
-    onProgress(30);
-
-    // Compress using Zeckendorf algorithm (interpret input as a little endian integer)
-    const compressed = zeckendorf_compress_le(uint8Array);
-
-    onProgress(100);
-
-    return {
-      blob: new Blob([new Uint8Array(compressed)]),
-      filename: `${file.name}.zle`,
-    };
-  }
-
-  throw new Error(`Unsupported format: ${format}`);
+  return {
+    error: "Could not detect which compression was used. File extension must be .zbe (big endian) or .zle (little endian).",
+  };
 };
 
 export const downloadBlob = (blob: Blob, filename: string) => {
@@ -130,4 +118,40 @@ export const downloadBlob = (blob: Blob, filename: string) => {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+};
+
+// Legacy functions for backward compatibility (if needed elsewhere)
+export const compressFiles = async (
+  files: File[],
+  format: "zeckendorf_be" | "zeckendorf_le",
+  level: "fast" | "balanced" | "maximum",
+  onProgress: (progress: number) => void
+): Promise<{ blob: Blob; filename: string }> => {
+  if (files.length !== 1) {
+    throw new Error("Zeckendorf compression only supports single file compression");
+  }
+
+  const file = files[0];
+  const arrayBuffer = await file.arrayBuffer();
+  const uint8Array = new Uint8Array(arrayBuffer);
+
+  onProgress(30);
+
+  let compressed: Uint8Array;
+  let filename: string;
+
+  if (format === "zeckendorf_be") {
+    compressed = zeckendorf_compress_be(uint8Array);
+    filename = `${file.name}.zbe`;
+  } else {
+    compressed = zeckendorf_compress_le(uint8Array);
+    filename = `${file.name}.zle`;
+  }
+
+  onProgress(100);
+
+  return {
+    blob: new Blob([new Uint8Array(compressed)]),
+    filename,
+  };
 };

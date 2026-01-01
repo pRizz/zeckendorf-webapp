@@ -1,17 +1,60 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
-import { FileArchive, Zap, Shield, Download, Loader2, Upload } from "lucide-react";
+import { FileArchive, Zap, Shield, Download, Loader2, Upload, FileDown } from "lucide-react";
 import { toast } from "sonner";
-import { CompressionOptions, CompressionFormat } from "@/components/CompressionOptions";
 import { CompressionLog, CompressionLogEntry } from "@/components/CompressionLog";
-import { compressFiles, downloadBlob } from "@/lib/compression";
+import { compressFileWithZeckendorf, decompressFileWithZeckendorf, downloadBlob } from "@/lib/compression";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
 
 const Index = () => {
-  const [format, setFormat] = useState<CompressionFormat>("zip");
   const [isCompressing, setIsCompressing] = useState(false);
-  const [isDragActive, setIsDragActive] = useState(false);
+  const [isDecompressing, setIsDecompressing] = useState(false);
+  const [isDragActiveCompress, setIsDragActiveCompress] = useState(false);
+  const [isDragActiveDecompress, setIsDragActiveDecompress] = useState(false);
   const [logEntries, setLogEntries] = useState<CompressionLogEntry[]>([]);
-  const level = "balanced";
+  const [compressionFailureDialog, setCompressionFailureDialog] = useState<{
+    open: boolean;
+    originalSize: number;
+    beSize: number;
+    leSize: number;
+  } | null>(null);
+
+  const STORAGE_KEY = "zeckendorf_compression_log";
+
+  // Load log entries from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        // Convert timestamp strings back to Date objects
+        const entries = parsed.map((entry: CompressionLogEntry) => ({
+          ...entry,
+          timestamp: new Date(entry.timestamp),
+        }));
+        setLogEntries(entries);
+      }
+    } catch (error) {
+      console.error("Failed to load log entries from localStorage:", error);
+    }
+  }, []);
+
+  // Save log entries to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(logEntries));
+    } catch (error) {
+      console.error("Failed to save log entries to localStorage:", error);
+    }
+  }, [logEntries]);
 
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return "0 B";
@@ -24,58 +67,175 @@ const Index = () => {
   const handleCompress = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
 
-    // Check format compatibility
-    if ((format === "gzip" || format === "deflate" || format === "zeckendorf_be" || format === "zeckendorf_le") && files.length > 1) {
-      toast.error(`${format.toUpperCase()} only supports single file compression. Use ZIP for multiple files.`);
+    if (files.length > 1) {
+      toast.error("Zeckendorf compression only supports single file compression. Please drop one file at a time.");
       return;
     }
 
+    const file = files[0];
     setIsCompressing(true);
 
     try {
-      const { blob, filename } = await compressFiles(files, format, level, () => {});
-      downloadBlob(blob, filename);
+      const result = await compressFileWithZeckendorf(file, () => {});
+
+      if (result.success) {
+        downloadBlob(result.blob, result.filename);
+        
+        const originalSize = file.size;
+        const compressedSize = result.blob.size;
+        const ratio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+        
+        // Add successful compression to log
+        const newEntry: CompressionLogEntry = {
+          id: crypto.randomUUID(),
+          type: "compress",
+          filename: file.name,
+          originalSize,
+          compressedSize,
+          compressionType: `zeckendorf_${result.endianness}`,
+          compressionLevel: "auto",
+          success: true,
+          timestamp: new Date(),
+        };
+        
+        setLogEntries(prev => [newEntry, ...prev]);
+        toast.success(`Compressed with ${result.endianness === "be" ? "big endian" : "little endian"}. Saved ${ratio}% (${formatBytes(originalSize)} → ${formatBytes(compressedSize)})`);
+      } else if (result.success === false) {
+        // Log failed compression attempt
+        const failedEntry: CompressionLogEntry = {
+          id: crypto.randomUUID(),
+          type: "compress",
+          filename: file.name,
+          originalSize: result.originalSize,
+          success: false,
+          error: "Compression did not reduce file size",
+          beSize: result.beSize,
+          leSize: result.leSize,
+          timestamp: new Date(),
+        };
+        
+        setLogEntries(prev => [failedEntry, ...prev]);
+        
+        // Show failure dialog
+        setCompressionFailureDialog({
+          open: true,
+          originalSize: result.originalSize,
+          beSize: result.beSize,
+          leSize: result.leSize,
+        });
+      }
+    } catch (error) {
+      console.error("Compression error:", error);
       
-      const originalSize = files.reduce((acc, f) => acc + f.size, 0);
-      const compressedSize = blob.size;
-      const ratio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
-      
-      // Add to log
-      const newEntry: CompressionLogEntry = {
+      // Log failed compression attempt with error
+      const errorEntry: CompressionLogEntry = {
         id: crypto.randomUUID(),
-        filename: files.length === 1 ? files[0].name : `${files.length} files`,
-        originalSize,
-        compressedSize,
-        compressionType: format,
-        compressionLevel: level,
+        type: "compress",
+        filename: file.name,
+        originalSize: file.size,
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
         timestamp: new Date(),
       };
       
-      setLogEntries(prev => [newEntry, ...prev]);
-      toast.success(`Saved ${ratio}% (${formatBytes(originalSize)} → ${formatBytes(compressedSize)})`);
-    } catch (error) {
-      console.error("Compression error:", error);
-      toast.error("Failed to compress files. Please try again.");
+      setLogEntries(prev => [errorEntry, ...prev]);
+      toast.error("Failed to compress file. Please try again.");
     } finally {
       setIsCompressing(false);
     }
-  }, [format, level]);
+  }, []);
 
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") {
-      setIsDragActive(true);
-    } else if (e.type === "dragleave") {
-      setIsDragActive(false);
+  const handleDecompress = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+
+    if (files.length > 1) {
+      toast.error("Please drop one file at a time for decompression.");
+      return;
+    }
+
+    const file = files[0];
+    setIsDecompressing(true);
+
+    try {
+      const result = await decompressFileWithZeckendorf(file, () => {});
+
+      if ("error" in result) {
+        // Log failed decompression attempt
+        const failedEntry: CompressionLogEntry = {
+          id: crypto.randomUUID(),
+          type: "decompress",
+          filename: file.name,
+          originalSize: file.size,
+          success: false,
+          error: result.error,
+          timestamp: new Date(),
+        };
+        
+        setLogEntries(prev => [failedEntry, ...prev]);
+        toast.error(result.error);
+      } else {
+        downloadBlob(result.blob, result.filename);
+        
+        // Log successful decompression
+        const successEntry: CompressionLogEntry = {
+          id: crypto.randomUUID(),
+          type: "decompress",
+          filename: file.name,
+          originalSize: file.size,
+          decompressedSize: result.blob.size,
+          success: true,
+          timestamp: new Date(),
+        };
+        
+        setLogEntries(prev => [successEntry, ...prev]);
+        toast.success(`Decompressed file: ${result.filename}`);
+      }
+    } catch (error) {
+      console.error("Decompression error:", error);
+      
+      // Log failed decompression attempt with error
+      const errorEntry: CompressionLogEntry = {
+        id: crypto.randomUUID(),
+        type: "decompress",
+        filename: file.name,
+        originalSize: file.size,
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+        timestamp: new Date(),
+      };
+      
+      setLogEntries(prev => [errorEntry, ...prev]);
+      toast.error("Failed to decompress file. Please try again.");
+    } finally {
+      setIsDecompressing(false);
     }
   }, []);
 
-  const handleDrop = useCallback(
+  const handleDragCompress = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setIsDragActiveCompress(true);
+    } else if (e.type === "dragleave") {
+      setIsDragActiveCompress(false);
+    }
+  }, []);
+
+  const handleDragDecompress = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.type === "dragenter" || e.type === "dragover") {
+      setIsDragActiveDecompress(true);
+    } else if (e.type === "dragleave") {
+      setIsDragActiveDecompress(false);
+    }
+  }, []);
+
+  const handleDropCompress = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      setIsDragActive(false);
+      setIsDragActiveCompress(false);
 
       if (isCompressing) return;
 
@@ -87,7 +247,23 @@ const Index = () => {
     [isCompressing, handleCompress]
   );
 
-  const handleFileInput = useCallback(
+  const handleDropDecompress = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setIsDragActiveDecompress(false);
+
+      if (isDecompressing) return;
+
+      const droppedFiles = Array.from(e.dataTransfer.files);
+      if (droppedFiles.length > 0) {
+        handleDecompress(droppedFiles);
+      }
+    },
+    [isDecompressing, handleDecompress]
+  );
+
+  const handleFileInputCompress = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       if (isCompressing) return;
       
@@ -95,14 +271,31 @@ const Index = () => {
       if (selectedFiles.length > 0) {
         handleCompress(selectedFiles);
       }
-      // Reset input so the same file can be selected again
       e.target.value = "";
     },
     [isCompressing, handleCompress]
   );
 
+  const handleFileInputDecompress = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (isDecompressing) return;
+      
+      const selectedFiles = Array.from(e.target.files || []);
+      if (selectedFiles.length > 0) {
+        handleDecompress(selectedFiles);
+      }
+      e.target.value = "";
+    },
+    [isDecompressing, handleDecompress]
+  );
+
   const clearLog = () => {
     setLogEntries([]);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+      console.error("Failed to clear log from localStorage:", error);
+    }
   };
 
   const features = [
@@ -112,64 +305,35 @@ const Index = () => {
   ];
 
   return (
-    <div 
-      className={`min-h-screen bg-background relative overflow-hidden transition-all duration-300 ${
-        isDragActive ? "ring-4 ring-inset ring-primary/50 bg-primary/5" : ""
-      }`}
-      onDragEnter={handleDrag}
-      onDragLeave={handleDrag}
-      onDragOver={handleDrag}
-      onDrop={handleDrop}
-    >
-      {/* Full-screen drop overlay */}
-      {isDragActive && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm pointer-events-none"
-        >
-          <div className="text-center">
-            <motion.div
-              animate={{ scale: [1, 1.1, 1] }}
-              transition={{ repeat: Infinity, duration: 1.5 }}
-              className="inline-flex items-center justify-center p-6 rounded-3xl bg-primary/20 border-2 border-dashed border-primary mb-4"
-            >
-              <Upload className="w-16 h-16 text-primary" />
-            </motion.div>
-            <h2 className="text-2xl font-bold text-primary">Drop files to compress</h2>
-            <p className="text-muted-foreground mt-2">Release to start compression</p>
-          </div>
-        </motion.div>
-      )}
-
+    <div className="min-h-screen bg-background relative overflow-hidden">
       {/* Background decorations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 gradient-primary rounded-full blur-[128px] opacity-10" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 gradient-primary rounded-full blur-[128px] opacity-10" />
       </div>
 
-      <div className="relative z-10 container max-w-2xl mx-auto px-4 py-12 md:py-20">
+      <div className="relative z-10 container max-w-4xl mx-auto px-4 py-12 md:py-20">
         {/* Header */}
         <motion.header
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-12"
         >
-          <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ type: "spring", delay: 0.2 }}
-            className="inline-flex items-center justify-center p-4 rounded-2xl bg-secondary/50 border border-border mb-6"
-          >
-            <FileArchive className="w-10 h-10 text-primary" />
-          </motion.div>
-          
-          <h1 className="text-4xl md:text-5xl font-bold mb-4 tracking-tight">
-            <span className="text-gradient">Compress</span> Files
-          </h1>
+          <div className="flex items-center justify-center gap-4 mb-6">
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tight">
+              <span className="text-gradient">Zeckendorf</span> Compression
+            </h1>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ type: "spring", delay: 0.2 }}
+              className="inline-flex items-center justify-center p-4 rounded-2xl bg-secondary/50 border border-border"
+            >
+              <FileArchive className="w-10 h-10 text-primary" />
+            </motion.div>
+          </div>
           <p className="text-muted-foreground text-lg max-w-md mx-auto">
-            Drop files to instantly compress. No uploads, no waiting.
+            Compress and decompress files using the Zeckendorf algorithm. Automatically selects the best endianness.
           </p>
 
           {/* Features */}
@@ -196,77 +360,151 @@ const Index = () => {
           transition={{ delay: 0.4 }}
           className="space-y-6"
         >
-          {/* Compression Options */}
-          <CompressionOptions
-            format={format}
-            onFormatChange={setFormat}
-          />
-
-          {/* Drop Zone */}
-          <motion.div
-            className={`
-              relative overflow-hidden rounded-2xl border-2 border-dashed 
-              transition-all duration-300 cursor-pointer
-              ${isCompressing 
-                ? "border-primary/50 bg-primary/5 cursor-wait" 
-                : "border-border hover:border-primary/50 bg-card/50"
-              }
-            `}
-            whileHover={!isCompressing ? { scale: 1.01 } : {}}
-            whileTap={!isCompressing ? { scale: 0.99 } : {}}
-          >
-            <label className={`block ${isCompressing ? "cursor-wait" : "cursor-pointer"} p-12`}>
-              <input
-                type="file"
-                multiple
-                onChange={handleFileInput}
-                className="hidden"
-                disabled={isCompressing}
-              />
-              <div className="flex flex-col items-center justify-center text-center">
-                <motion.div
-                  animate={
-                    isCompressing 
-                      ? { rotate: 360 } 
-                      : { scale: 1, rotate: 0 }
-                  }
-                  transition={
-                    isCompressing 
-                      ? { repeat: Infinity, duration: 1, ease: "linear" } 
-                      : { type: "spring", stiffness: 300 }
-                  }
-                  className="mb-6"
-                >
-                  <div className="relative">
-                    <div className={`absolute inset-0 gradient-primary rounded-full blur-2xl opacity-30 ${isCompressing ? "" : "animate-pulse-glow"}`} />
-                    <div className="relative p-5 rounded-full bg-secondary">
-                      {isCompressing ? (
-                        <Loader2 className="w-10 h-10 text-primary" />
-                      ) : (
-                        <Upload className="w-10 h-10 text-primary" />
-                      )}
+          {/* Compress Section */}
+          <div>
+            <h2 className="text-2xl font-semibold mb-4">Compress</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Drop a file to compress with Zeckendorf. We'll automatically try both big endian and little endian and use whichever produces a smaller result.
+            </p>
+            <motion.div
+              className={`
+                relative overflow-hidden rounded-2xl border-2 border-dashed 
+                transition-all duration-300 cursor-pointer
+                ${isCompressing 
+                  ? "border-primary/50 bg-primary/5 cursor-wait" 
+                  : isDragActiveCompress
+                  ? "border-primary bg-primary/10"
+                  : "border-border hover:border-primary/50 bg-card/50"
+                }
+              `}
+              whileHover={!isCompressing ? { scale: 1.01 } : {}}
+              whileTap={!isCompressing ? { scale: 0.99 } : {}}
+              onDragEnter={handleDragCompress}
+              onDragLeave={handleDragCompress}
+              onDragOver={handleDragCompress}
+              onDrop={handleDropCompress}
+            >
+              <label className={`block ${isCompressing ? "cursor-wait" : "cursor-pointer"} p-12`}>
+                <input
+                  type="file"
+                  onChange={handleFileInputCompress}
+                  className="hidden"
+                  disabled={isCompressing}
+                />
+                <div className="flex flex-col items-center justify-center text-center">
+                  <motion.div
+                    animate={
+                      isCompressing 
+                        ? { rotate: 360 } 
+                        : { scale: 1, rotate: 0 }
+                    }
+                    transition={
+                      isCompressing 
+                        ? { repeat: Infinity, duration: 1, ease: "linear" } 
+                        : { type: "spring", stiffness: 300 }
+                    }
+                    className="mb-6"
+                  >
+                    <div className="relative">
+                      <div className={`absolute inset-0 gradient-primary rounded-full blur-2xl opacity-30 ${isCompressing ? "" : "animate-pulse-glow"}`} />
+                      <div className="relative p-5 rounded-full bg-secondary">
+                        {isCompressing ? (
+                          <Loader2 className="w-10 h-10 text-primary" />
+                        ) : (
+                          <Upload className="w-10 h-10 text-primary" />
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-                <h3 className="text-xl font-semibold mb-2">
-                  {isCompressing 
-                    ? "Compressing..." 
-                    : "Drop files anywhere to compress"
-                  }
-                </h3>
-                <p className="text-muted-foreground text-sm">
-                  {isCompressing 
-                    ? "Your download will start automatically" 
-                    : <>or <span className="text-primary font-medium">click to browse</span></>
-                  }
-                </p>
-              </div>
-            </label>
+                  </motion.div>
+                  <h3 className="text-xl font-semibold mb-2">
+                    {isCompressing 
+                      ? "Compressing..." 
+                      : "Drop file to compress"
+                    }
+                  </h3>
+                  <p className="text-muted-foreground text-sm">
+                    {isCompressing 
+                      ? "Trying both endianness options..." 
+                      : <>or <span className="text-primary font-medium">click to browse</span></>
+                    }
+                  </p>
+                </div>
+              </label>
+            </motion.div>
+          </div>
 
-            {/* Decorative elements */}
-            <div className="absolute top-4 right-4 w-20 h-20 gradient-primary rounded-full blur-3xl opacity-10 animate-spin-slow" />
-            <div className="absolute bottom-4 left-4 w-16 h-16 gradient-primary rounded-full blur-2xl opacity-10 animate-float" />
-          </motion.div>
+          {/* Decompress Section */}
+          <div>
+            <h2 className="text-2xl font-semibold mb-4">Decompress</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Drop a compressed file (.zbe or .zle) to decompress. The compression type is detected from the file extension.
+            </p>
+            <motion.div
+              className={`
+                relative overflow-hidden rounded-2xl border-2 border-dashed 
+                transition-all duration-300 cursor-pointer
+                ${isDecompressing 
+                  ? "border-primary/50 bg-primary/5 cursor-wait" 
+                  : isDragActiveDecompress
+                  ? "border-primary bg-primary/10"
+                  : "border-border hover:border-primary/50 bg-card/50"
+                }
+              `}
+              whileHover={!isDecompressing ? { scale: 1.01 } : {}}
+              whileTap={!isDecompressing ? { scale: 0.99 } : {}}
+              onDragEnter={handleDragDecompress}
+              onDragLeave={handleDragDecompress}
+              onDragOver={handleDragDecompress}
+              onDrop={handleDropDecompress}
+            >
+              <label className={`block ${isDecompressing ? "cursor-wait" : "cursor-pointer"} p-12`}>
+                <input
+                  type="file"
+                  onChange={handleFileInputDecompress}
+                  className="hidden"
+                  disabled={isDecompressing}
+                />
+                <div className="flex flex-col items-center justify-center text-center">
+                  <motion.div
+                    animate={
+                      isDecompressing 
+                        ? { rotate: 360 } 
+                        : { scale: 1, rotate: 0 }
+                    }
+                    transition={
+                      isDecompressing 
+                        ? { repeat: Infinity, duration: 1, ease: "linear" } 
+                        : { type: "spring", stiffness: 300 }
+                    }
+                    className="mb-6"
+                  >
+                    <div className="relative">
+                      <div className={`absolute inset-0 gradient-primary rounded-full blur-2xl opacity-30 ${isDecompressing ? "" : "animate-pulse-glow"}`} />
+                      <div className="relative p-5 rounded-full bg-secondary">
+                        {isDecompressing ? (
+                          <Loader2 className="w-10 h-10 text-primary" />
+                        ) : (
+                          <FileDown className="w-10 h-10 text-primary" />
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                  <h3 className="text-xl font-semibold mb-2">
+                    {isDecompressing 
+                      ? "Decompressing..." 
+                      : "Drop file to decompress"
+                    }
+                  </h3>
+                  <p className="text-muted-foreground text-sm">
+                    {isDecompressing 
+                      ? "Your download will start automatically" 
+                      : <>or <span className="text-primary font-medium">click to browse</span></>
+                    }
+                  </p>
+                </div>
+              </label>
+            </motion.div>
+          </div>
 
           {/* Compression Log */}
           <CompressionLog entries={logEntries} onClear={clearLog} />
@@ -286,7 +524,7 @@ const Index = () => {
           <p>
             Works offline —{" "}
             <a 
-              href="https://github.com/pRizz/zip-it-up" 
+              href="https://github.com/pRizz/zeckendorf-webapp" 
               target="_blank" 
               rel="noopener noreferrer"
               className="text-primary hover:underline"
@@ -310,6 +548,47 @@ const Index = () => {
           </p>
         </motion.footer>
       </div>
+
+      {/* Compression Failure Dialog */}
+      <Dialog 
+        open={compressionFailureDialog?.open ?? false} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setCompressionFailureDialog(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Compression Not Beneficial</DialogTitle>
+            <DialogDescription>
+              The Zeckendorf compression algorithm did not produce smaller files than the original for both endianness options.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Original file size:</span>
+                <span className="text-sm font-mono">{formatBytes(compressionFailureDialog?.originalSize ?? 0)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Big endian compressed size:</span>
+                <span className="text-sm font-mono text-muted-foreground">{formatBytes(compressionFailureDialog?.beSize ?? 0)}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-medium">Little endian compressed size:</span>
+                <span className="text-sm font-mono text-muted-foreground">{formatBytes(compressionFailureDialog?.leSize ?? 0)}</span>
+              </div>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Zeckendorf compression works best on certain types of data. This file's data distribution doesn't benefit from Zeckendorf compression.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setCompressionFailureDialog(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
