@@ -19,7 +19,12 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "noImplicitAny": true,
-    "noFallthroughCasesInSwitch": false,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitReturns": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "forceConsistentCasingInFileNames": true,
 
     "baseUrl": ".",
     "paths": {

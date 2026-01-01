@@ -13,7 +13,16 @@ export default tseslint.config(
     "src/components/ui" // shadcn-ui components are not linted
   ] },
   {
-    extends: [js.configs.recommended, ...tseslint.configs.recommended],
+    extends: [
+      js.configs.recommended, 
+      ...tseslint.configs.recommendedTypeChecked,
+      {
+        languageOptions: {
+          parserOptions: {
+            projectService: true,
+          },
+        },
+      }],
     files: ["**/*.{ts,tsx}"],
     languageOptions: {
       ecmaVersion: 2020,
@@ -26,7 +35,31 @@ export default tseslint.config(
     rules: {
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
-      "@typescript-eslint/no-unused-vars": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
+      "@typescript-eslint/no-explicit-any": "error",
+      "@typescript-eslint/explicit-function-return-type": [
+        "warn",
+        {
+          allowExpressions: true,
+          allowTypedFunctionExpressions: true,
+          allowHigherOrderFunctions: true,
+          allowDirectConstAssertionInArrowFunctions: true,
+        },
+      ],
+      "@typescript-eslint/no-floating-promises": "error",
+      "@typescript-eslint/no-misused-promises": "error",
+      "@typescript-eslint/await-thenable": "error",
+      "@typescript-eslint/no-unnecessary-type-assertion": "error",
+      "@typescript-eslint/prefer-nullish-coalescing": "warn",
+      "@typescript-eslint/prefer-optional-chain": "warn",
+      "@typescript-eslint/no-non-null-assertion": "warn",
     },
   },
 );
