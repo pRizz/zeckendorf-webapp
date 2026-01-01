@@ -7,9 +7,7 @@ export type { CompressionResult };
 let maybeWorker: Worker | null = null;
 
 const getWorker = (): Worker => {
-  if (maybeWorker === null) {
-    maybeWorker = new CompressionWorker();
-  }
+  maybeWorker ??= new CompressionWorker();
   return maybeWorker;
 };
 
@@ -36,7 +34,7 @@ export const compressFileWithZeckendorf = async (
   const id = crypto.randomUUID();
 
   return new Promise<CompressionResult>((resolve, reject) => {
-    const messageHandler = (event: MessageEvent<WorkerResponse>) => {
+    const messageHandler = (event: MessageEvent<WorkerResponse>): void => {
       const response = event.data;
 
       if (response.id !== id) {
@@ -95,7 +93,7 @@ const decompressViaWorker = async (
   const id = crypto.randomUUID();
 
   return new Promise<{ blob: Uint8Array; filename: string }>((resolve, reject) => {
-    const messageHandler = (event: MessageEvent<WorkerResponse>) => {
+    const messageHandler = (event: MessageEvent<WorkerResponse>): void => {
       const response = event.data;
 
       if (response.id !== id) {
@@ -158,7 +156,7 @@ export const decompressFileWithZeckendorf = async (
   }
 };
 
-export const downloadBlob = (blob: Blob, filename: string) => {
+export const downloadBlob = (blob: Blob, filename: string): void => {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

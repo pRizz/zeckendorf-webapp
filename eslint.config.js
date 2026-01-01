@@ -10,7 +10,8 @@ export default tseslint.config(
     "zeckendorf_rs_wasm", 
     "vendor", 
     "tailwind.config.ts",
-    "src/components/ui" // shadcn-ui components are not linted
+    "src/components/ui", // shadcn-ui components are not linted
+    "vite.config.ts"
   ] },
   {
     extends: [

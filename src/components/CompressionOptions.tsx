@@ -26,7 +26,7 @@ const formats: { value: CompressionFormat; label: string; description: string }[
 export const CompressionOptions = ({
   format,
   onFormatChange,
-}: CompressionOptionsProps) => {
+}: CompressionOptionsProps): JSX.Element => {
   return (
     <div className="p-5 rounded-xl glass border border-border">
       <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground mb-4">

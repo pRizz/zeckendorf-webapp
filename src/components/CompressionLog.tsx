@@ -25,11 +25,11 @@ interface CompressionLogProps {
   onClear: () => void;
 }
 
-const formatTime = (date: Date) => {
+const formatTime = (date: Date): string => {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
-export const CompressionLog = ({ entries, onClear }: CompressionLogProps) => {
+export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.Element => {
   const [isExpanded, setIsExpanded] = useState(true);
 
   return (
@@ -144,7 +144,7 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps) => {
                                   }`}
                                 >
                                   {isPositive ? "-" : "+"}
-                                  {Math.abs(parseFloat(savedPercent || "0"))}%
+                                  {Math.abs(parseFloat(savedPercent ?? "0"))}%
                                 </span>
                               </div>
                             ) : isDecompress && entry.decompressedSize ? (
@@ -157,7 +157,7 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps) => {
                           ) : (
                             <div className="mt-1 space-y-1">
                               <p className="text-xs text-destructive">
-                                {entry.error || (isCompress ? "Compression did not reduce file size" : "Decompression failed")}
+                                {entry.error ?? (isCompress ? "Compression did not reduce file size" : "Decompression failed")}
                               </p>
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <span className="font-mono">{formatBytes(entry.originalSize)}</span>

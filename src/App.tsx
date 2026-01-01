@@ -13,7 +13,7 @@ const queryClient = new QueryClient();
 // Eagerly initialize the compression worker at app startup. Late initialization causes issues with the worker not being ready when the first message is sent.
 initializeWorker();
 
-const App = () => (
+const App = (): JSX.Element => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />

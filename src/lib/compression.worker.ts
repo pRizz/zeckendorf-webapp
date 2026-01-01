@@ -159,7 +159,7 @@ const handleDecompress = (message: Extract<WorkerRequest, { type: "decompress" }
 };
 
 // Handle messages from the main thread
-self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
+self.onmessage = (event: MessageEvent<WorkerRequest>) => {
   const message = event.data;
 
   try {

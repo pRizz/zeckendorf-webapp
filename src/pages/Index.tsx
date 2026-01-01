@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
-import { FileArchive, Zap, Shield, Download, Loader2, Upload, FileDown } from "lucide-react";
+import { FileArchive, Loader2, Upload, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { CompressionLog, CompressionLogEntry } from "@/components/CompressionLog";
 import { compressFileWithZeckendorf, decompressFileWithZeckendorf, downloadBlob, decompressUint8Array } from "@/lib/compression";
@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-const Index = () => {
+const Index = (): JSX.Element => {
   const [isCompressing, setIsCompressing] = useState(false);
   const [isDecompressing, setIsDecompressing] = useState(false);
   const [isDragActiveCompress, setIsDragActiveCompress] = useState(false);
@@ -41,13 +41,20 @@ const Index = () => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
-        const parsed = JSON.parse(stored);
+        const parsed = JSON.parse(stored) as unknown;
         // Convert timestamp strings back to Date objects
-        const entries = parsed.map((entry: CompressionLogEntry) => ({
-          ...entry,
-          timestamp: new Date(entry.timestamp),
-        }));
-        setLogEntries(entries);
+        if (Array.isArray(parsed)) {
+          const entries = parsed.map((entry: unknown) => {
+            if (typeof entry === "object" && entry !== null && "timestamp" in entry) {
+              return {
+                ...(entry as CompressionLogEntry),
+                timestamp: new Date((entry as { timestamp: string | Date }).timestamp),
+              };
+            }
+            return entry as CompressionLogEntry;
+          });
+          setLogEntries(entries);
+        }
       }
     } catch (error) {
       console.error("Failed to load log entries from localStorage:", error);
@@ -244,7 +251,7 @@ const Index = () => {
 
       const droppedFiles = Array.from(e.dataTransfer.files);
       if (droppedFiles.length > 0) {
-        handleCompress(droppedFiles);
+        void handleCompress(droppedFiles);
       }
     },
     [isCompressing, handleCompress]
@@ -260,7 +267,7 @@ const Index = () => {
 
       const droppedFiles = Array.from(e.dataTransfer.files);
       if (droppedFiles.length > 0) {
-        handleDecompress(droppedFiles);
+        void handleDecompress(droppedFiles);
       }
     },
     [isDecompressing, handleDecompress]
@@ -270,9 +277,9 @@ const Index = () => {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       if (isCompressing) return;
       
-      const selectedFiles = Array.from(e.target.files || []);
+      const selectedFiles = Array.from(e.target.files ?? []);
       if (selectedFiles.length > 0) {
-        handleCompress(selectedFiles);
+        void handleCompress(selectedFiles);
       }
       e.target.value = "";
     },
@@ -283,16 +290,16 @@ const Index = () => {
     (e: React.ChangeEvent<HTMLInputElement>) => {
       if (isDecompressing) return;
       
-      const selectedFiles = Array.from(e.target.files || []);
+      const selectedFiles = Array.from(e.target.files ?? []);
       if (selectedFiles.length > 0) {
-        handleDecompress(selectedFiles);
+        void handleDecompress(selectedFiles);
       }
       e.target.value = "";
     },
     [isDecompressing, handleDecompress]
   );
 
-  const clearLog = () => {
+  const clearLog = (): void => {
     setLogEntries([]);
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -301,7 +308,7 @@ const Index = () => {
     }
   };
 
-  const handleDownloadSampleCompressedFileBE = useCallback(async () => {
+  const handleDownloadSampleCompressedFileBE = useCallback( () => {
     try {
       // Create 100 bytes of 0xFF, which represents an All Ones Zeckendorf Number
       const sampleCompressedData = new Uint8Array(100);
@@ -317,7 +324,7 @@ const Index = () => {
     }
   }, []);
 
-  const handleDownloadSampleCompressedFileLE = useCallback(async () => {
+  const handleDownloadSampleCompressedFileLE = useCallback((): void => {
     try {
       // Create 100 bytes of 0xFF, which represents an All Ones Zeckendorf Number
       const sampleCompressedData = new Uint8Array(100);
@@ -441,7 +448,7 @@ const Index = () => {
     }
   }, [validateSize]);
 
-  const handleGenerateCompressedBE = useCallback(async () => {
+  const handleGenerateCompressedBE = useCallback((): void => {
     const maybeSize = validateSize();
     if (maybeSize === null) return;
 
@@ -465,7 +472,7 @@ const Index = () => {
     }
   }, [validateSize]);
 
-  const handleGenerateCompressedLE = useCallback(async () => {
+  const handleGenerateCompressedLE = useCallback((): void => {
     const maybeSize = validateSize();
     if (maybeSize === null) return;
 
@@ -563,7 +570,9 @@ const Index = () => {
             <p className="text-sm text-muted-foreground mb-4">
               Drop a file to compress with Zeckendorf. We'll automatically try both big endian and little endian and use whichever produces a smaller result. The odds of a file being compressed with Zeckendorf are very low, so this is mostly for fun.{" "}
               <button
-                onClick={handleDownloadWellCompressibleBE}
+                onClick={() => {
+                  void handleDownloadWellCompressibleBE();
+                }}
                 className="text-primary hover:underline font-medium"
                 type="button"
               >
@@ -571,7 +580,9 @@ const Index = () => {
               </button>
               {" "}or{" "}
               <button
-                onClick={handleDownloadWellCompressibleLE}
+                onClick={() => {
+                  void handleDownloadWellCompressibleLE();
+                }}
                 className="text-primary hover:underline font-medium"
                 type="button"
               >
@@ -652,7 +663,9 @@ const Index = () => {
             <p className="text-sm text-muted-foreground mb-4">
               Drop a compressed file (.zbe or .zle) to decompress. The compression type is detected from the file extension.{" "}
               <button
-                onClick={handleDownloadSampleCompressedFileBE}
+                onClick={() => {
+                  handleDownloadSampleCompressedFileBE();
+                }}
                 className="text-primary hover:underline font-medium"
                 type="button"
               >
@@ -660,7 +673,9 @@ const Index = () => {
               </button>
               {" "}or{" "}
               <button
-                onClick={handleDownloadSampleCompressedFileLE}
+                onClick={() => {
+                  handleDownloadSampleCompressedFileLE();
+                }}
                 className="text-primary hover:underline font-medium"
                 type="button"
               >
@@ -902,7 +917,9 @@ const Index = () => {
               <div className="text-sm font-medium">Well Compressible Data</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Button
-                  onClick={handleGenerateWellCompressibleBE}
+                  onClick={() => {
+                    void handleGenerateWellCompressibleBE();
+                  }}
                   disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
@@ -917,7 +934,9 @@ const Index = () => {
                   )}
                 </Button>
                 <Button
-                  onClick={handleGenerateWellCompressibleLE}
+                  onClick={() => {
+                    void handleGenerateWellCompressibleLE();
+                  }}
                   disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
@@ -935,7 +954,9 @@ const Index = () => {
               <div className="text-sm font-medium mt-4">Compressed Data</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Button
-                  onClick={handleGenerateCompressedBE}
+                  onClick={() => {
+                    handleGenerateCompressedBE();
+                  }}
                   disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
@@ -950,7 +971,9 @@ const Index = () => {
                   )}
                 </Button>
                 <Button
-                  onClick={handleGenerateCompressedLE}
+                  onClick={() => {
+                    handleGenerateCompressedLE();
+                  }}
                   disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
