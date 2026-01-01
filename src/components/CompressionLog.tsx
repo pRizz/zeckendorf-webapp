@@ -25,8 +25,14 @@ interface CompressionLogProps {
   onClear: () => void;
 }
 
-const formatTime = (date: Date): string => {
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const formatDateTime = (date: Date): string => {
+  return date.toLocaleString([], { 
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit", 
+    minute: "2-digit" 
+  });
 };
 
 export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.Element => {
@@ -181,7 +187,7 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.E
                           </span>
                         )}
                         <p className="text-xs text-muted-foreground">
-                          {formatTime(entry.timestamp)}
+                          {formatDateTime(entry.timestamp)}
                         </p>
                       </div>
                     </div>
