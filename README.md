@@ -60,7 +60,7 @@ The compression engine is powered by the [Zeckendorf Rust library](https://githu
 
 ```sh
 # Step 1: Clone the repository
-git clone <YOUR_GIT_URL>
+git clone git@github.com:pRizz/zeckendorf-webapp.git
 cd zeckendorf-webapp
 
 # Step 2: Initialize git submodules (required for the Zeckendorf library)
