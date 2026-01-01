@@ -132,7 +132,18 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps) => {
                           )}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">{entry.filename}</p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-sm font-semibold">
+                              {entry.success 
+                                ? (isCompress ? "Compression Successful" : "Decompression Successful")
+                                : (isCompress ? "Compression Failed" : "Decompression Failed")
+                              }
+                            </p>
+                            {entry.success && (
+                              <Check className="w-3.5 h-3.5 text-primary" />
+                            )}
+                          </div>
+                          <p className="text-sm font-medium truncate text-muted-foreground">{entry.filename}</p>
                           {entry.success ? (
                             isCompress && entry.compressedSize ? (
                               <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
@@ -158,7 +169,7 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps) => {
                           ) : (
                             <div className="mt-1 space-y-1">
                               <p className="text-xs text-destructive">
-                                {entry.error || (isCompress ? "Compression failed" : "Decompression failed")}
+                                {entry.error || (isCompress ? "Compression did not reduce file size" : "Decompression failed")}
                               </p>
                               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <span className="font-mono">{formatBytes(entry.originalSize)}</span>

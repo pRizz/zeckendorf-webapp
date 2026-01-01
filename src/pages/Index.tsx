@@ -4,6 +4,8 @@ import { FileArchive, Zap, Shield, Download, Loader2, Upload, FileDown } from "l
 import { toast } from "sonner";
 import { CompressionLog, CompressionLogEntry } from "@/components/CompressionLog";
 import { compressFileWithZeckendorf, decompressFileWithZeckendorf, downloadBlob } from "@/lib/compression";
+import { MEDIUM_ARTICLE_URL } from "@/lib/constants";
+import { zeckendorf_decompress_be, zeckendorf_decompress_le } from "@/../zeckendorf_rs_wasm/zeckendorf_rs.js";
 import {
   Dialog,
   DialogContent,
@@ -298,6 +300,76 @@ const Index = () => {
     }
   };
 
+  const handleDownloadSampleCompressedFileBE = useCallback(async () => {
+    try {
+      // Create 100 bytes of 0xFF, which represents an All Ones Zeckendorf Number
+      const sampleCompressedData = new Uint8Array(100);
+      sampleCompressedData.fill(0xFF);
+                  
+      // Create blob and download
+      const blob = new Blob([sampleCompressedData]);
+      downloadBlob(blob, "100bytesCompressed.zbe");
+      toast.success("Sample compressed file (big endian) downloaded successfully");
+    } catch (error) {
+      console.error("Error generating sample file:", error);
+      toast.error("Failed to generate sample file");
+    }
+  }, []);
+
+  const handleDownloadSampleCompressedFileLE = useCallback(async () => {
+    try {
+      // Create 100 bytes of 0xFF, which represents an All Ones Zeckendorf Number
+      const sampleCompressedData = new Uint8Array(100);
+      sampleCompressedData.fill(0xFF);
+      
+      // Create blob and download
+      const blob = new Blob([sampleCompressedData]);
+      downloadBlob(blob, "100bytesCompressed.zle");
+      toast.success("Sample compressed file (little endian) downloaded successfully");
+    } catch (error) {
+      console.error("Error generating sample file:", error);
+      toast.error("Failed to generate sample file");
+    }
+  }, []);
+
+  const handleDownloadWellCompressibleBE = useCallback(async () => {
+    try {
+      // Create 100 bytes of 0xFF (compressed representation)
+      const compressedData = new Uint8Array(100);
+      compressedData.fill(0xFF);
+      
+      // Decompress using big endian to get the original data that compresses well
+      const decompressed = zeckendorf_decompress_be(compressedData);
+      
+      // Create blob and download
+      const blob = new Blob([new Uint8Array(decompressed)]);
+      downloadBlob(blob, "wellCompressibleBE.bin");
+      toast.success("Well compressible file (big endian) downloaded successfully");
+    } catch (error) {
+      console.error("Error generating well compressible file:", error);
+      toast.error("Failed to generate well compressible file");
+    }
+  }, []);
+
+  const handleDownloadWellCompressibleLE = useCallback(async () => {
+    try {
+      // Create 100 bytes of 0xFF (compressed representation)
+      const compressedData = new Uint8Array(100);
+      compressedData.fill(0xFF);
+      
+      // Decompress using little endian to get the original data that compresses well
+      const decompressed = zeckendorf_decompress_le(compressedData);
+      
+      // Create blob and download
+      const blob = new Blob([new Uint8Array(decompressed)]);
+      downloadBlob(blob, "wellCompressibleLE.bin");
+      toast.success("Well compressible file (little endian) downloaded successfully");
+    } catch (error) {
+      console.error("Error generating well compressible file:", error);
+      toast.error("Failed to generate well compressible file");
+    }
+  }, []);
+
   const features = [
     { icon: Zap, label: "Fast", desc: "Browser-powered" },
     { icon: Shield, label: "Private", desc: "No uploads" },
@@ -332,12 +404,23 @@ const Index = () => {
               <FileArchive className="w-10 h-10 text-primary" />
             </motion.div>
           </div>
-          <p className="text-muted-foreground text-lg max-w-md mx-auto">
-            Compress and decompress files using the Zeckendorf algorithm. Automatically selects the best endianness.
+          <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
+            Compress and decompress files using the Zeckendorf algorithm.<br />
+            Automatically selects the best endianness interpretation.<br />
+            All processing happens locally in your browser.
           </p>
+          <a
+              href={MEDIUM_ARTICLE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary hover:underline font-medium"
+            >
+              Learn more
+            </a>
+
 
           {/* Features */}
-          <div className="flex justify-center gap-6 mt-8">
+          {/* <div className="flex justify-center gap-6 mt-8">
             {features.map((feature, i) => (
               <motion.div
                 key={feature.label}
@@ -350,7 +433,7 @@ const Index = () => {
                 <span>{feature.label}</span>
               </motion.div>
             ))}
-          </div>
+          </div> */}
         </motion.header>
 
         {/* Main content */}
@@ -364,7 +447,23 @@ const Index = () => {
           <div>
             <h2 className="text-2xl font-semibold mb-4">Compress</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              Drop a file to compress with Zeckendorf. We'll automatically try both big endian and little endian and use whichever produces a smaller result.
+              Drop a file to compress with Zeckendorf. We'll automatically try both big endian and little endian and use whichever produces a smaller result. The odds of a file being compressed with Zeckendorf are very low, so this is mostly for fun.{" "}
+              <button
+                onClick={handleDownloadWellCompressibleBE}
+                className="text-primary hover:underline font-medium"
+                type="button"
+              >
+                Download a well compressible file (big endian)
+              </button>
+              {" "}or{" "}
+              <button
+                onClick={handleDownloadWellCompressibleLE}
+                className="text-primary hover:underline font-medium"
+                type="button"
+              >
+                Download a well compressible file (little endian)
+              </button>
+              {" "}to try it out.
             </p>
             <motion.div
               className={`
@@ -437,7 +536,23 @@ const Index = () => {
           <div>
             <h2 className="text-2xl font-semibold mb-4">Decompress</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              Drop a compressed file (.zbe or .zle) to decompress. The compression type is detected from the file extension.
+              Drop a compressed file (.zbe or .zle) to decompress. The compression type is detected from the file extension.{" "}
+              <button
+                onClick={handleDownloadSampleCompressedFileBE}
+                className="text-primary hover:underline font-medium"
+                type="button"
+              >
+                Download a sample compressed file (.zbe)
+              </button>
+              {" "}or{" "}
+              <button
+                onClick={handleDownloadSampleCompressedFileLE}
+                className="text-primary hover:underline font-medium"
+                type="button"
+              >
+                Download a sample compressed file (.zle)
+              </button>
+              {" "}to try it out. The sample file consists of 100 bytes of an all ones Zeckendorf Number.
             </p>
             <motion.div
               className={`
@@ -533,10 +648,40 @@ const Index = () => {
             </a>{" "}
             on GitHub (MIT License)
           </p>
+          <p>
+            <a 
+              href="https://github.com/pRizz/zeckendorf" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              Free &amp; open source Rust code
+            </a>{" "}
+            for Zeckendorf Compression and Decompression
+          </p>
+          <p>
+            <a 
+              href={MEDIUM_ARTICLE_URL} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              Learn about Zeckendorf compression
+            </a>
+          </p>
           <p className="text-xs">
             Made by{" "}
             <span className="text-foreground">Peter Ryszkiewicz</span>{" "}
             with{" "}
+            <a 
+              href="https://cursor.sh" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-primary hover:underline"
+            >
+              Cursor
+            </a>
+            {" "}and{" "}
             <a 
               href="https://lovable.dev" 
               target="_blank" 
