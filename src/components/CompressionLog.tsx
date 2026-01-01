@@ -46,11 +46,11 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps) => {
       className="rounded-xl glass border border-border overflow-hidden"
     >
       {/* Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between p-4 hover:bg-secondary/50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
+      <div className="w-full flex items-center justify-between p-4">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="flex items-center gap-3 flex-1 hover:bg-secondary/50 transition-colors rounded-md -m-2 p-2"
+        >
           <div className="p-2 rounded-lg bg-primary/10">
             <FileArchive className="w-4 h-4 text-primary" />
           </div>
@@ -62,26 +62,21 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps) => {
                 : `${entries.length} operation${entries.length !== 1 ? "s" : ""} logged`}
             </p>
           </div>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClear();
-            }}
-            className="text-muted-foreground hover:text-destructive"
-          >
-            <Trash2 className="w-4 h-4" />
-          </Button>
           {isExpanded ? (
-            <ChevronUp className="w-5 h-5 text-muted-foreground" />
+            <ChevronUp className="w-5 h-5 text-muted-foreground ml-auto" />
           ) : (
-            <ChevronDown className="w-5 h-5 text-muted-foreground" />
+            <ChevronDown className="w-5 h-5 text-muted-foreground ml-auto" />
           )}
-        </div>
-      </button>
+        </button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onClear}
+          className="text-muted-foreground hover:text-destructive"
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </div>
 
       {/* Content */}
       <AnimatePresence>

@@ -12,6 +12,8 @@
     "build": "pnpm run build-zeckendorf-rs-wasm && vite build",
     "build:dev": "pnpm run build-zeckendorf-rs-wasm && vite build --mode development",
     "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "tsc:build": "tsc --build",
     "preview": "pnpm run build-zeckendorf-rs-wasm && vite preview"
   },
   "dependencies": {

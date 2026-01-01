@@ -3,9 +3,8 @@ import { motion } from "framer-motion";
 import { FileArchive, Zap, Shield, Download, Loader2, Upload, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { CompressionLog, CompressionLogEntry, formatBytes } from "@/components/CompressionLog";
-import { compressFileWithZeckendorf, decompressFileWithZeckendorf, downloadBlob } from "@/lib/compression";
-import { MEDIUM_ARTICLE_URL } from "@/lib/constants";
-import { zeckendorf_decompress_be, zeckendorf_decompress_le } from "@/../zeckendorf_rs_wasm/zeckendorf_rs.js";
+import { compressFileWithZeckendorf, decompressFileWithZeckendorf, downloadBlob, decompressUint8Array } from "@/lib/compression";
+import { MEDIUM_ARTICLE_URL, MAX_GENERATABLE_FILE_SIZE } from "@/lib/constants";
 import {
   Dialog,
   DialogContent,
@@ -336,7 +335,7 @@ const Index = () => {
       compressedData.fill(0xFF);
       
       // Decompress using big endian to get the original data that compresses well
-      const decompressed = zeckendorf_decompress_be(compressedData);
+      const decompressed = await decompressUint8Array(compressedData, "be");
       
       // Create blob and download
       const blob = new Blob([new Uint8Array(decompressed)]);
@@ -355,7 +354,7 @@ const Index = () => {
       compressedData.fill(0xFF);
       
       // Decompress using little endian to get the original data that compresses well
-      const decompressed = zeckendorf_decompress_le(compressedData);
+      const decompressed = await decompressUint8Array(compressedData, "le");
       
       // Create blob and download
       const blob = new Blob([new Uint8Array(decompressed)]);
@@ -375,8 +374,8 @@ const Index = () => {
       return null;
     }
     
-    if (maybeSize > 1000000) {
-      toast.error("Size must be at most 1,000,000 bytes");
+    if (maybeSize > MAX_GENERATABLE_FILE_SIZE) {
+      toast.error(`Size must be at most ${MAX_GENERATABLE_FILE_SIZE.toLocaleString()} bytes`);
       return null;
     }
 
@@ -395,7 +394,7 @@ const Index = () => {
       compressedData.fill(0xFF);
       
       // Decompress to get the original well compressible data
-      const decompressed = zeckendorf_decompress_be(compressedData);
+      const decompressed = await decompressUint8Array(compressedData, "be");
       
       // Download well compressible file
       const blob = new Blob([new Uint8Array(decompressed)]);
@@ -422,7 +421,7 @@ const Index = () => {
       compressedData.fill(0xFF);
       
       // Decompress to get the original well compressible data
-      const decompressed = zeckendorf_decompress_le(compressedData);
+      const decompressed = await decompressUint8Array(compressedData, "le");
       
       // Download well compressible file
       const blob = new Blob([new Uint8Array(decompressed)]);
@@ -868,31 +867,31 @@ const Index = () => {
           <DialogHeader>
             <DialogTitle>Generate Custom Sized Data</DialogTitle>
             <DialogDescription>
-              Enter the size in bytes and choose which file type to generate. Each file is generated on-demand when you click its button. A maximum of 1,000,000 bytes is set due to memory pressure during compression and decompression. Wanna help improve the algorithm? Check out the <a href="https://github.com/pRizz/zeckendorf" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Rust code</a> and submit a pull request!
+              Enter the size in bytes and choose which file type to generate. Each file is generated on-demand when you click its button. A maximum of {MAX_GENERATABLE_FILE_SIZE.toLocaleString()} bytes is set due to memory pressure during compression and decompression. Wanna help improve the algorithm? Check out the <a href="https://github.com/pRizz/zeckendorf" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Rust code</a> and submit a pull request!
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="data-size">Size in bytes (max 1,000,000)</Label>
+              <Label htmlFor="data-size">Size in bytes (max {MAX_GENERATABLE_FILE_SIZE.toLocaleString()})</Label>
               <Input
                 id="data-size"
                 type="number"
                 min="1"
-                max="1000000"
+                max={MAX_GENERATABLE_FILE_SIZE}
                 value={customDataSize}
                 onChange={(e) => {
                   const value = e.target.value;
                   const maybeNum = parseInt(value, 10);
-                  if (value === "" || (!isNaN(maybeNum) && maybeNum > 0 && maybeNum <= 1000000)) {
+                  if (value === "" || (!isNaN(maybeNum) && maybeNum > 0 && maybeNum <= MAX_GENERATABLE_FILE_SIZE)) {
                     setCustomDataSize(value);
                   }
                 }}
                 placeholder="Enter size in bytes"
                 disabled={generatingType !== null}
               />
-              {customDataSize && (isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > 1000000) && (
+              {customDataSize && (isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE) && (
                 <p className="text-sm text-destructive">
-                  Please enter a number between 1 and 1,000,000
+                  Please enter a number between 1 and {MAX_GENERATABLE_FILE_SIZE.toLocaleString()}
                 </p>
               )}
             </div>
@@ -901,7 +900,7 @@ const Index = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Button
                   onClick={handleGenerateWellCompressibleBE}
-                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > 1000000}
+                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
                 >
@@ -916,7 +915,7 @@ const Index = () => {
                 </Button>
                 <Button
                   onClick={handleGenerateWellCompressibleLE}
-                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > 1000000}
+                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
                 >
@@ -934,7 +933,7 @@ const Index = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Button
                   onClick={handleGenerateCompressedBE}
-                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > 1000000}
+                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
                 >
@@ -949,7 +948,7 @@ const Index = () => {
                 </Button>
                 <Button
                   onClick={handleGenerateCompressedLE}
-                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > 1000000}
+                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
                 >

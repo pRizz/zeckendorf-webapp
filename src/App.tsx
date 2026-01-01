@@ -6,8 +6,12 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Github } from "lucide-react";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import { initializeWorker } from "@/lib/compression";
 
 const queryClient = new QueryClient();
+
+// Eagerly initialize the compression worker at app startup. Late initialization causes issues with the worker not being ready when the first message is sent.
+initializeWorker();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>

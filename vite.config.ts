@@ -85,6 +85,12 @@ export default defineConfig(({ mode }) => ({
   build: {
     target: "es2022", // Supports top-level await for the generated wasm code
   },
+  worker: {
+    plugins: () => [
+      wasm(),
+    ],
+    format: "es", // Supports top-level await for the generated wasm code
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
