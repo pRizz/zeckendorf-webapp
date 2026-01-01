@@ -9,7 +9,8 @@ import wasm from "vite-plugin-wasm";
 export default defineConfig(({ mode }) => {
   const isDev = mode === "development";
   // When deploying to GitHub Pages, use the repo name as the base path
-  const base = isDev ? "/" : "/zeckendorf-webapp/";
+  // const base = isDev ? "/" : "/zeckendorf-webapp/";
+  const base = "/";
 
   return {
     server: {
