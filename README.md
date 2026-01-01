@@ -1,6 +1,6 @@
-# Zeckendorf Webapp
+# Zeckendorf Webapp - Browser-Based File Compression
 
-A free, open-source web application for compressing and decompressing files directly in your web browser using the Zeckendorf representation algorithm. All processing happens locally in your browser—no data is uploaded to any server.
+A free, open-source web application for compressing and decompressing files directly in your web browser using the Zeckendorf representation algorithm. All processing happens locally in your browser—no data is uploaded to any server. This compression tool uses Rust based WebAssembly for high-performance, client-side file compression and decompression.
 
 ## Overview
 

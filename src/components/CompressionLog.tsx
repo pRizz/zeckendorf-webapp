@@ -48,7 +48,7 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps) => {
             <FileArchive className="w-4 h-4 text-primary" />
           </div>
           <div className="text-left">
-            <h3 className="text-sm font-medium">Compression History</h3>
+            <h3 id="compression-log-heading" className="text-sm font-medium">Compression History</h3>
             <p className="text-xs text-muted-foreground">
               {entries.length === 0 
                 ? "No operations yet" 

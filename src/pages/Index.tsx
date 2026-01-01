@@ -516,7 +516,7 @@ const Index = () => {
               transition={{ type: "spring", delay: 0.2 }}
               className="inline-flex items-center justify-center p-4 rounded-2xl bg-secondary/50 border border-border"
             >
-              <FileArchive className="w-10 h-10 text-primary" />
+                  <FileArchive className="w-10 h-10 text-primary" aria-hidden="true" />
             </motion.div>
           </div>
           <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
@@ -557,10 +557,11 @@ const Index = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
           className="space-y-6"
+          aria-label="Compression and decompression tools"
         >
           {/* Compress Section */}
-          <div>
-            <h2 className="text-2xl font-semibold mb-4">Compress</h2>
+          <section aria-labelledby="compress-heading">
+            <h2 id="compress-heading" className="text-2xl font-semibold mb-4">Compress</h2>
             <p className="text-sm text-muted-foreground mb-4">
               Drop a file to compress with Zeckendorf. We'll automatically try both big endian and little endian and use whichever produces a smaller result. The odds of a file being compressed with Zeckendorf are very low, so this is mostly for fun.{" "}
               <button
@@ -645,11 +646,11 @@ const Index = () => {
                 </div>
               </label>
             </motion.div>
-          </div>
+          </section>
 
           {/* Decompress Section */}
-          <div>
-            <h2 className="text-2xl font-semibold mb-4">Decompress</h2>
+          <section aria-labelledby="decompress-heading">
+            <h2 id="decompress-heading" className="text-2xl font-semibold mb-4">Decompress</h2>
             <p className="text-sm text-muted-foreground mb-4">
               Drop a compressed file (.zbe or .zle) to decompress. The compression type is detected from the file extension.{" "}
               <button
@@ -734,10 +735,12 @@ const Index = () => {
                 </div>
               </label>
             </motion.div>
-          </div>
+          </section>
 
           {/* Compression Log */}
-          <CompressionLog entries={logEntries} onClear={clearLog} />
+          <section aria-labelledby="compression-log-heading">
+            <CompressionLog entries={logEntries} onClear={clearLog} />
+          </section>
         </motion.main>
 
         {/* Footer */}
@@ -746,6 +749,7 @@ const Index = () => {
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6 }}
           className="text-center mt-12 text-sm text-muted-foreground space-y-3"
+          aria-label="Footer information"
         >
           <div className="mt-6 text-center">
             <Button

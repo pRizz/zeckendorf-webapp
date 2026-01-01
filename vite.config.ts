@@ -1,9 +1,14 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
+import { readFileSync } from "fs";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 import wasm from "vite-plugin-wasm";
+
+// Read version from package.json
+const packageJson = JSON.parse(readFileSync(path.resolve(__dirname, "package.json"), "utf-8"));
+const appVersion = packageJson.version;
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -23,6 +28,13 @@ export default defineConfig(({ mode }) => {
       wasm(),
       react(),
       isDev && componentTagger(),
+      // Plugin to inject version from package.json into HTML
+      {
+        name: "inject-version",
+        transformIndexHtml(html: string) {
+          return html.replace(/__APP_VERSION__/g, appVersion);
+        },
+      },
       VitePWA({
         registerType: "autoUpdate",
         includeAssets: ["favicon.ico", "robots.txt"],
