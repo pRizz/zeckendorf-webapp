@@ -18,16 +18,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup SSH for submodules
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SUBMODULE_SSH_KEY }}
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
           token: ${{ secrets.GITHUB_TOKEN }}
+          ssh-key: ${{ secrets.SUBMODULE_SSH_KEY }}
 
       - name: Initialize and update submodules
         run: git submodule update --init --recursive
