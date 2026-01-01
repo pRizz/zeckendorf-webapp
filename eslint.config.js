@@ -5,7 +5,13 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "zeckendorf_rs_wasm", "vendor"] },
+  { ignores: [
+    "dist", 
+    "zeckendorf_rs_wasm", 
+    "vendor", 
+    "tailwind.config.ts",
+    "src/components/ui" // shadcn-ui components are not linted
+  ] },
   {
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     files: ["**/*.{ts,tsx}"],

@@ -6,28 +6,34 @@ import { VitePWA } from "vite-plugin-pwa";
 import wasm from "vite-plugin-wasm";
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
-  server: {
-    host: "::",
-    port: 8080,
-  },
-  plugins: [
-    wasm(),
-    react(),
-    mode === "development" && componentTagger(),
-    VitePWA({
-      registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "robots.txt"],
-      manifest: {
-        name: "Compress Files - Browser-Based Compression",
-        short_name: "Compress",
-        description: "Fast, private file compression directly in your browser. No uploads, works offline.",
-        theme_color: "#0d1117",
-        background_color: "#0d1117",
-        display: "standalone",
-        orientation: "portrait",
-        scope: "/",
-        start_url: "/",
+export default defineConfig(({ mode }) => {
+  const isDev = mode === "development";
+  // When deploying to GitHub Pages, use the repo name as the base path
+  const base = isDev ? "/" : "/zeckendorf-webapp/";
+
+  return {
+    server: {
+      host: "::",
+      port: 8080,
+    },
+    base,
+    plugins: [
+      wasm(),
+      react(),
+      isDev && componentTagger(),
+      VitePWA({
+        registerType: "autoUpdate",
+        includeAssets: ["favicon.ico", "robots.txt"],
+        manifest: {
+          name: "Zeckendorf Webapp - Browser-Based Compression",
+          short_name: "Zeckendorf",
+          description: "Free, open-source file compression using the Zeckendorf algorithm. All processing happens locally in your browser. No uploads, works offline.",
+          theme_color: "#0d1117",
+          background_color: "#0d1117",
+          display: "standalone",
+          orientation: "portrait",
+          scope: base,
+          start_url: base,
         icons: [
           {
             src: "/pwa-192x192.png",
@@ -82,18 +88,19 @@ export default defineConfig(({ mode }) => ({
       },
     }),
   ].filter(Boolean),
-  build: {
-    target: "es2022", // Supports top-level await for the generated wasm code
-  },
-  worker: {
-    plugins: () => [
-      wasm(),
-    ],
-    format: "es", // Supports top-level await for the generated wasm code
-  },
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
+    build: {
+      target: "es2022", // Supports top-level await for the generated wasm code
     },
-  },
-}));
+    worker: {
+      plugins: () => [
+        wasm(),
+      ],
+      format: "es", // Supports top-level await for the generated wasm code
+    },
+    resolve: {
+      alias: {
+        "@": path.resolve(__dirname, "./src"),
+      },
+    },
+  };
+});

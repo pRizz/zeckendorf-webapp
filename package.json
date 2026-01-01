@@ -1,9 +1,29 @@
 {
-  "name": "vite_react_shadcn_ts",
-  "private": true,
-  "version": "0.0.0",
+  "name": "zeckendorf-webapp",
+  "version": "0.0.1",
+  "description": "Free, open-source web application for compressing and decompressing files using the Zeckendorf representation algorithm. All processing happens locally in your browser.",
   "type": "module",
+  "private": false,
   "packageManager": "pnpm@9.12.0",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com:pRizz/zeckendorf-webapp.git"
+  },
+  "homepage": "https://pRizz.github.io/zeckendorf-webapp/",
+  "bugs": {
+    "url": "https://github.com/pRizz/zeckendorf-webapp/issues"
+  },
+  "keywords": [
+    "zeckendorf",
+    "compression",
+    "fibonacci",
+    "webassembly",
+    "wasm",
+    "browser",
+    "pwa",
+    "react",
+    "vite"
+  ],
   "scripts": {
     "init-git-submodules": "git submodule update --init --recursive",
     "update-zeckendorf-rs-dep": "scripts/update-zeckendorf-rs-dep.sh",

@@ -2,8 +2,9 @@ import { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FileArchive, Zap, Shield, Download, Loader2, Upload, FileDown } from "lucide-react";
 import { toast } from "sonner";
-import { CompressionLog, CompressionLogEntry, formatBytes } from "@/components/CompressionLog";
+import { CompressionLog, CompressionLogEntry } from "@/components/CompressionLog";
 import { compressFileWithZeckendorf, decompressFileWithZeckendorf, downloadBlob, decompressUint8Array } from "@/lib/compression";
+import { formatBytes } from "@/lib/utils";
 import { MEDIUM_ARTICLE_URL, MAX_GENERATABLE_FILE_SIZE } from "@/lib/constants";
 import {
   Dialog,
