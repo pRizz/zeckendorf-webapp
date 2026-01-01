@@ -24,7 +24,7 @@ interface CompressionLogProps {
   onClear: () => void;
 }
 
-const formatBytes = (bytes: number) => {
+export const formatBytes = (bytes: number) => {
   if (bytes === 0) return "0 B";
   const k = 1024;
   const sizes = ["B", "KB", "MB", "GB"];

@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import { FileArchive, Zap, Shield, Download, Loader2, Upload, FileDown } from "lucide-react";
 import { toast } from "sonner";
-import { CompressionLog, CompressionLogEntry } from "@/components/CompressionLog";
+import { CompressionLog, CompressionLogEntry, formatBytes } from "@/components/CompressionLog";
 import { compressFileWithZeckendorf, decompressFileWithZeckendorf, downloadBlob } from "@/lib/compression";
 import { MEDIUM_ARTICLE_URL } from "@/lib/constants";
 import { zeckendorf_decompress_be, zeckendorf_decompress_le } from "@/../zeckendorf_rs_wasm/zeckendorf_rs.js";
@@ -15,6 +15,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 const Index = () => {
   const [isCompressing, setIsCompressing] = useState(false);
@@ -28,6 +30,9 @@ const Index = () => {
     beSize: number;
     leSize: number;
   } | null>(null);
+  const [customDataDialogOpen, setCustomDataDialogOpen] = useState(false);
+  const [customDataSize, setCustomDataSize] = useState<string>("");
+  const [generatingType, setGeneratingType] = useState<"wellCompressibleBE" | "wellCompressibleLE" | "compressedBE" | "compressedLE" | null>(null);
 
   const STORAGE_KEY = "zeckendorf_compression_log";
 
@@ -57,14 +62,6 @@ const Index = () => {
       console.error("Failed to save log entries to localStorage:", error);
     }
   }, [logEntries]);
-
-  const formatBytes = (bytes: number) => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
 
   const handleCompress = useCallback(async (files: File[]) => {
     if (files.length === 0) return;
@@ -370,6 +367,124 @@ const Index = () => {
     }
   }, []);
 
+  const validateSize = useCallback((): number | null => {
+    const maybeSize = parseInt(customDataSize, 10);
+    
+    if (isNaN(maybeSize) || maybeSize <= 0) {
+      toast.error("Please enter a valid positive number");
+      return null;
+    }
+    
+    if (maybeSize > 1000000) {
+      toast.error("Size must be at most 1,000,000 bytes");
+      return null;
+    }
+
+    return maybeSize;
+  }, [customDataSize]);
+
+  const handleGenerateWellCompressibleBE = useCallback(async () => {
+    const maybeSize = validateSize();
+    if (maybeSize === null) return;
+
+    setGeneratingType("wellCompressibleBE");
+
+    try {
+      // Generate compressed data of the specified size (filled with 0xFF)
+      const compressedData = new Uint8Array(maybeSize);
+      compressedData.fill(0xFF);
+      
+      // Decompress to get the original well compressible data
+      const decompressed = zeckendorf_decompress_be(compressedData);
+      
+      // Download well compressible file
+      const blob = new Blob([new Uint8Array(decompressed)]);
+      downloadBlob(blob, `wellCompressibleBE_${maybeSize}bytes.bin`);
+      
+      toast.success(`Generated well compressible file (BE): ${formatBytes(maybeSize)} compressed → ${formatBytes(decompressed.length)} original`);
+    } catch (error) {
+      console.error("Error generating well compressible file (BE):", error);
+      toast.error("Failed to generate well compressible file");
+    } finally {
+      setGeneratingType(null);
+    }
+  }, [validateSize]);
+
+  const handleGenerateWellCompressibleLE = useCallback(async () => {
+    const maybeSize = validateSize();
+    if (maybeSize === null) return;
+
+    setGeneratingType("wellCompressibleLE");
+
+    try {
+      // Generate compressed data of the specified size (filled with 0xFF)
+      const compressedData = new Uint8Array(maybeSize);
+      compressedData.fill(0xFF);
+      
+      // Decompress to get the original well compressible data
+      const decompressed = zeckendorf_decompress_le(compressedData);
+      
+      // Download well compressible file
+      const blob = new Blob([new Uint8Array(decompressed)]);
+      downloadBlob(blob, `wellCompressibleLE_${maybeSize}bytes.bin`);
+      
+      toast.success(`Generated well compressible file (LE): ${formatBytes(maybeSize)} compressed → ${formatBytes(decompressed.length)} original`);
+    } catch (error) {
+      console.error("Error generating well compressible file (LE):", error);
+      toast.error("Failed to generate well compressible file");
+    } finally {
+      setGeneratingType(null);
+    }
+  }, [validateSize]);
+
+  const handleGenerateCompressedBE = useCallback(async () => {
+    const maybeSize = validateSize();
+    if (maybeSize === null) return;
+
+    setGeneratingType("compressedBE");
+
+    try {
+      // Generate compressed data of the specified size (filled with 0xFF)
+      const compressedData = new Uint8Array(maybeSize);
+      compressedData.fill(0xFF);
+      
+      // Download compressed file
+      const blob = new Blob([compressedData]);
+      downloadBlob(blob, `compressedBE_${maybeSize}bytes.zbe`);
+      
+      toast.success(`Generated compressed file (BE): ${formatBytes(maybeSize)}`);
+    } catch (error) {
+      console.error("Error generating compressed file (BE):", error);
+      toast.error("Failed to generate compressed file");
+    } finally {
+      setGeneratingType(null);
+    }
+  }, [validateSize]);
+
+  const handleGenerateCompressedLE = useCallback(async () => {
+    const maybeSize = validateSize();
+    if (maybeSize === null) return;
+
+    setGeneratingType("compressedLE");
+
+    try {
+      // Generate compressed data of the specified size (filled with 0xFF)
+      const compressedData = new Uint8Array(maybeSize);
+      compressedData.fill(0xFF);
+      
+      // Download compressed file
+      const blob = new Blob([compressedData]);
+      downloadBlob(blob, `compressedLE_${maybeSize}bytes.zle`);
+      
+      toast.success(`Generated compressed file (LE): ${formatBytes(maybeSize)}`);
+    } catch (error) {
+      console.error("Error generating compressed file (LE):", error);
+      toast.error("Failed to generate compressed file");
+    } finally {
+      setGeneratingType(null);
+    }
+  }, [validateSize]);
+
   const features = [
     { icon: Zap, label: "Fast", desc: "Browser-powered" },
     { icon: Shield, label: "Private", desc: "No uploads" },
@@ -632,6 +747,15 @@ const Index = () => {
           transition={{ delay: 0.6 }}
           className="text-center mt-12 text-sm text-muted-foreground space-y-3"
         >
+          <div className="mt-6 text-center">
+            <Button
+              onClick={() => setCustomDataDialogOpen(true)}
+              variant="secondary"
+              className="w-full sm:w-auto mx-auto"
+            >
+              Generate Custom Sized Data
+            </Button>
+          </div>
           <p>
             All processing happens locally in your browser.{" "}
             <span className="text-primary">Your files never leave your device.</span>
@@ -731,6 +855,128 @@ const Index = () => {
           </div>
           <DialogFooter>
             <Button onClick={() => setCompressionFailureDialog(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Custom Data Generation Dialog */}
+      <Dialog 
+        open={customDataDialogOpen} 
+        onOpenChange={setCustomDataDialogOpen}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Generate Custom Sized Data</DialogTitle>
+            <DialogDescription>
+              Enter the size in bytes and choose which file type to generate. Each file is generated on-demand when you click its button. A maximum of 1,000,000 bytes is set due to memory pressure during compression and decompression. Wanna help improve the algorithm? Check out the <a href="https://github.com/pRizz/zeckendorf" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Rust code</a> and submit a pull request!
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="data-size">Size in bytes (max 1,000,000)</Label>
+              <Input
+                id="data-size"
+                type="number"
+                min="1"
+                max="1000000"
+                value={customDataSize}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  const maybeNum = parseInt(value, 10);
+                  if (value === "" || (!isNaN(maybeNum) && maybeNum > 0 && maybeNum <= 1000000)) {
+                    setCustomDataSize(value);
+                  }
+                }}
+                placeholder="Enter size in bytes"
+                disabled={generatingType !== null}
+              />
+              {customDataSize && (isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > 1000000) && (
+                <p className="text-sm text-destructive">
+                  Please enter a number between 1 and 1,000,000
+                </p>
+              )}
+            </div>
+            <div className="space-y-3">
+              <div className="text-sm font-medium">Well Compressible Data</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Button
+                  onClick={handleGenerateWellCompressibleBE}
+                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > 1000000}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {generatingType === "wellCompressibleBE" ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    "Well Compressible (BE)"
+                  )}
+                </Button>
+                <Button
+                  onClick={handleGenerateWellCompressibleLE}
+                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > 1000000}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {generatingType === "wellCompressibleLE" ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    "Well Compressible (LE)"
+                  )}
+                </Button>
+              </div>
+              <div className="text-sm font-medium mt-4">Compressed Data</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <Button
+                  onClick={handleGenerateCompressedBE}
+                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > 1000000}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {generatingType === "compressedBE" ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    "Compressed (BE)"
+                  )}
+                </Button>
+                <Button
+                  onClick={handleGenerateCompressedLE}
+                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > 1000000}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {generatingType === "compressedLE" ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    "Compressed (LE)"
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setCustomDataDialogOpen(false);
+                setCustomDataSize("");
+              }}
+              disabled={generatingType !== null}
+              className="w-full sm:w-auto"
+            >
+              Close
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
