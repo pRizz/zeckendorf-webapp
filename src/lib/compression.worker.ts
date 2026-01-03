@@ -5,7 +5,7 @@ import {
   zeckendorf_compress_le,
   zeckendorf_decompress_be,
   zeckendorf_decompress_le,
-} from "@/../zeckendorf_rs_wasm/zeckendorf_rs.js";
+} from "@/../zeckendorf_rs_wasm/zeck.js";
 import type { WorkerRequest, WorkerResponse } from "./compression.types";
 
 // TypeScript worker context - self is available in worker scope
