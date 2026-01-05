@@ -501,16 +501,20 @@ const Index = (): JSX.Element => {
     }
   }, []);
 
-  const validateCustomDataContentSize = useCallback((): number | null => {
+  const validateCustomDataContentSize = useCallback((showToasts = true): number | null => {
     const maybeCustomDataContentSize = parseInt(customDataContentSize, 10);
     
     if (isNaN(maybeCustomDataContentSize) || maybeCustomDataContentSize <= 0) {
-      toast.error("Please enter a valid positive number");
+      if (showToasts) {
+        toast.error("Please enter a valid positive number");
+      }
       return null;
     }
     
     if (maybeCustomDataContentSize > MAX_GENERATABLE_FILE_SIZE) {
-      toast.error(`Size must be at most ${MAX_GENERATABLE_FILE_SIZE.toLocaleString()} bytes`);
+      if (showToasts) {
+        toast.error(`Size must be at most ${MAX_GENERATABLE_FILE_SIZE.toLocaleString()} bytes`);
+      }
       return null;
     }
 
@@ -1109,7 +1113,7 @@ const Index = (): JSX.Element => {
                 </Button>
               </div>
               <div className="text-sm font-medium mt-4">Compressed Data (.zeck) 
-                {validateCustomDataContentSize() && <span className="text-xs text-muted-foreground">{" "}(total file size will be {ZECK_FILE_HEADER_SIZE + validateCustomDataContentSize()!} bytes)</span>}
+                {validateCustomDataContentSize(false) && <span className="text-xs text-muted-foreground">{" "}(total file size will be {ZECK_FILE_HEADER_SIZE + validateCustomDataContentSize(false)!} bytes)</span>}
                 </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Button
