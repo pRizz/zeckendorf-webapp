@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { readFileSync } from "fs";
+import { execSync } from "child_process";
 import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
 import wasm from "vite-plugin-wasm";
@@ -9,6 +10,19 @@ import wasm from "vite-plugin-wasm";
 // Read version from package.json
 const packageJson = JSON.parse(readFileSync(path.resolve(__dirname, "package.json"), "utf-8"));
 const appVersion = packageJson.version;
+
+// Get git hash at build time
+function getGitHash(): string {
+  try {
+    return execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim();
+  } catch {
+    return "unknown";
+  }
+}
+
+// Get build datetime at build time
+const buildDateTime = new Date().toISOString();
+const gitHash = getGitHash();
 
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
@@ -115,6 +129,11 @@ export default defineConfig(({ mode }) => {
       alias: {
         "@": path.resolve(__dirname, "./src"),
       },
+    },
+    define: {
+      __APP_VERSION__: JSON.stringify(appVersion),
+      __GIT_HASH__: JSON.stringify(gitHash),
+      __BUILD_DATETIME__: JSON.stringify(buildDateTime),
     },
   };
 });

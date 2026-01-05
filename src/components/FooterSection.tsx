@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { MEDIUM_ARTICLE_URL } from "@/lib/constants";
+import { Github, Linkedin, Twitter, BookOpen } from "lucide-react";
+import { MEDIUM_ARTICLE_URL, LINKEDIN_URL, TWITTER_URL, GITHUB_URL, MEDIUM_URL } from "@/lib/constants";
 
 interface FooterSectionProps {
   onOpenCustomDataDialog: () => void;
@@ -82,6 +83,48 @@ export const FooterSection = ({ onOpenCustomDataDialog }: FooterSectionProps): J
         >
           Lovable
         </a>
+      </p>
+      <div className="flex items-center justify-center gap-4 mt-2">
+        <a
+          href={GITHUB_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:text-primary transition-colors"
+          aria-label="GitHub"
+        >
+          <Github className="h-4 w-4" />
+        </a>
+        <a
+          href={LINKEDIN_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:text-primary transition-colors"
+          aria-label="LinkedIn"
+        >
+          <Linkedin className="h-4 w-4" />
+        </a>
+        <a
+          href={TWITTER_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:text-primary transition-colors"
+          aria-label="Twitter/X"
+        >
+          <Twitter className="h-4 w-4" />
+        </a>
+        <a
+          href={MEDIUM_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground hover:text-primary transition-colors"
+          aria-label="Medium"
+        >
+          {/* FIXME: Replace BookOpen with the official Medium logo */}
+          <BookOpen className="h-4 w-4" />
+        </a>
+      </div>
+      <p className="text-xs text-muted-foreground/60 mt-4">
+        v{__APP_VERSION__} • {__GIT_HASH__} • Built {new Date(__BUILD_DATETIME__).toLocaleString()}
       </p>
     </motion.footer>
   );
