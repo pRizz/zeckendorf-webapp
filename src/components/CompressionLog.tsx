@@ -9,7 +9,8 @@ export interface CompressionLogEntry {
   type: "compress" | "decompress";
   filename: string;
   originalSize: number;
-  compressedSize?: number; // Only for compression entries
+  compressedContentSize?: number; // For compression: compressed content size (without header). For decompression: compressed content size from .zeck file
+  totalFileSize?: number; // For compression: total .zeck file size (with header). For decompression: total .zeck file size
   decompressedSize?: number; // Only for decompression entries
   compressionType?: string; // Only for compression entries
   compressionLevel?: string; // Only for compression entries
@@ -96,10 +97,16 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.E
                 entries.map((entry, index) => {
                 const isCompress = entry.type === "compress";
                 const isDecompress = entry.type === "decompress";
-                const savedPercent = entry.compressedSize 
-                  ? ((1 - entry.compressedSize / entry.originalSize) * 100).toFixed(1)
+                // Calculate savings for compressed content (without header)
+                const compressedContentSavedPercent = entry.compressedContentSize !== undefined
+                  ? ((1 - entry.compressedContentSize / entry.originalSize) * 100).toFixed(1)
                   : null;
-                const isPositive = savedPercent ? parseFloat(savedPercent) > 0 : false;
+                const isCompressedContentPositive = compressedContentSavedPercent ? parseFloat(compressedContentSavedPercent) > 0 : false;
+                // Calculate savings for total file size (with header)
+                const totalFileSizeSavedPercent = entry.totalFileSize !== undefined
+                  ? ((1 - entry.totalFileSize / entry.originalSize) * 100).toFixed(1)
+                  : null;
+                const isTotalFileSizePositive = totalFileSizeSavedPercent ? parseFloat(totalFileSizeSavedPercent) > 0 : false;
 
                 return (
                   <motion.div
@@ -140,25 +147,65 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.E
                           </div>
                           <p className="text-sm font-medium truncate text-muted-foreground">{entry.filename}</p>
                           {entry.success ? (
-                            isCompress && entry.compressedSize ? (
-                              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                <span className="font-mono">{formatBytes(entry.originalSize)}</span>
-                                <span>→</span>
-                                <span className="font-mono">{formatBytes(entry.compressedSize)}</span>
-                                <span
-                                  className={`font-semibold ${
-                                    isPositive ? "text-primary" : "text-muted-foreground"
-                                  }`}
-                                >
-                                  {isPositive ? "-" : "+"}
-                                  {Math.abs(parseFloat(savedPercent ?? "0"))}%
-                                </span>
+                            isCompress && entry.compressedContentSize !== undefined ? (
+                              <div className="mt-1 space-y-1">
+                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span className="font-mono">{formatBytes(entry.originalSize)}</span>
+                                  <span>→</span>
+                                  <span className="font-mono">{formatBytes(entry.compressedContentSize)}</span>
+                                  <span className="text-muted-foreground/70">(compressed content)</span>
+                                  {compressedContentSavedPercent !== null && (
+                                    <span
+                                      className={`font-semibold ${
+                                        isCompressedContentPositive ? "text-primary" : "text-muted-foreground"
+                                      }`}
+                                    >
+                                      {isCompressedContentPositive ? "-" : "+"}
+                                      {Math.abs(parseFloat(compressedContentSavedPercent))}%
+                                    </span>
+                                  )}
+                                </div>
+                                {entry.totalFileSize !== undefined && (
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground/80 pl-1">
+                                    <span className="text-muted-foreground/60">Total .zeck file size:</span>
+                                    <span className="font-mono">{formatBytes(entry.totalFileSize)}</span>
+                                    {totalFileSizeSavedPercent !== null && (
+                                      <span
+                                        className={`font-semibold ${
+                                          isTotalFileSizePositive ? "text-primary" : "text-muted-foreground"
+                                        }`}
+                                      >
+                                        {isTotalFileSizePositive ? "-" : "+"}
+                                        {Math.abs(parseFloat(totalFileSizeSavedPercent))}%
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             ) : isDecompress && entry.decompressedSize ? (
-                              <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                                <span className="font-mono">{formatBytes(entry.originalSize)}</span>
-                                <span>→</span>
-                                <span className="font-mono">{formatBytes(entry.decompressedSize)}</span>
+                              <div className="mt-1 space-y-1">
+                                {entry.compressedContentSize !== undefined ? (
+                                  <>
+                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                      <span className="font-mono">{formatBytes(entry.compressedContentSize)}</span>
+                                      <span>→</span>
+                                      <span className="font-mono">{formatBytes(entry.decompressedSize)}</span>
+                                      <span className="text-muted-foreground/70">(compressed content → decompressed)</span>
+                                    </div>
+                                    {entry.totalFileSize !== undefined && (
+                                      <div className="flex items-center gap-2 text-xs text-muted-foreground/80 pl-1">
+                                        <span className="text-muted-foreground/60">Total .zeck file size:</span>
+                                        <span className="font-mono">{formatBytes(entry.totalFileSize)}</span>
+                                      </div>
+                                    )}
+                                  </>
+                                ) : (
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                    <span className="font-mono">{formatBytes(entry.originalSize)}</span>
+                                    <span>→</span>
+                                    <span className="font-mono">{formatBytes(entry.decompressedSize)}</span>
+                                  </div>
+                                )}
                               </div>
                             ) : null
                           ) : (

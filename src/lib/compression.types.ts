@@ -3,8 +3,12 @@
  */
 
 export type CompressionResult = 
-  | { success: true; blob: Blob; filename: string; endianness: "be" | "le" }
+  | { success: true; blob: Blob; filename: string; endianness: "be" | "le"; compressedContentSize: number; totalFileSize: number }
   | { success: false; originalSize: number; beSize: number; leSize: number };
+
+export type DecompressionResult =
+  | { success: true; blob: Blob; filename: string; compressedContentSize: number; totalFileSize: number }
+  | { error: string };
 
 /**
  * Messages sent from the main thread to the worker
@@ -13,13 +17,13 @@ export type WorkerRequest =
   | {
       type: "compress";
       id: string;
-      data: Uint8Array;
+      dataToCompress: Uint8Array;
       filename: string;
     }
   | {
       type: "decompress";
       id: string;
-      data: Uint8Array;
+      zeckFileData: Uint8Array;
       filename: string;
     };
 
@@ -31,11 +35,12 @@ export type WorkerResponse =
       type: "compress";
       id: string;
       success: true;
-      blob: Uint8Array;
+      compressedData: Uint8Array;
       filename: string;
       endianness: "be" | "le";
       originalSize: number;
-      compressedSize: number;
+      compressedContentSize: number; // Compressed content size (without header)
+      totalFileSize: number; // Total .zeck file size (with header)
     }
   | {
       type: "compress";
@@ -49,8 +54,10 @@ export type WorkerResponse =
       type: "decompress";
       id: string;
       success: true;
-      blob: Uint8Array;
+      decompressedData: Uint8Array;
       filename: string;
+      compressedContentSize: number; // Compressed content size (without header)
+      totalFileSize: number; // Total .zeck file size (with header)
     }
   | {
       type: "decompress";

@@ -3,9 +3,15 @@ import { motion } from "framer-motion";
 import { FileArchive, Loader2, Upload, FileDown } from "lucide-react";
 import { toast } from "sonner";
 import { CompressionLog, CompressionLogEntry } from "@/components/CompressionLog";
-import { compressFileWithZeckendorf, decompressFileWithZeckendorf, downloadBlob, decompressUint8Array } from "@/lib/compression";
+import { compressFileWithZeckendorf, decompressZeckFile, downloadBlob } from "@/lib/compression";
+import {
+  padless_zeckendorf_decompress_be_dangerous,
+  padless_zeckendorf_decompress_le_dangerous,
+  zeck_file_to_bytes,
+  type ZeckFile,
+} from "@/../zeckendorf_rs_wasm/zeck.js";
 import { formatBytes, formatElapsedTimeShort } from "@/lib/utils";
-import { MEDIUM_ARTICLE_URL, MAX_GENERATABLE_FILE_SIZE } from "@/lib/constants";
+import { MEDIUM_ARTICLE_URL, MAX_GENERATABLE_FILE_SIZE, ZECK_FILE_HEADER_SIZE } from "@/lib/constants";
 import {
   Dialog,
   DialogContent,
@@ -31,11 +37,13 @@ const Index = (): JSX.Element => {
     leSize: number;
   } | null>(null);
   const [customDataDialogOpen, setCustomDataDialogOpen] = useState(false);
-  const [customDataSize, setCustomDataSize] = useState<string>("");
+  const [customDataContentSize, setCustomDataContentSize] = useState<string>("");
   const [generatingType, setGeneratingType] = useState<"wellCompressibleBE" | "wellCompressibleLE" | "compressedBE" | "compressedLE" | null>(null);
   const [elapsedMilliseconds, setElapsedMilliseconds] = useState<number>(0);
   const [compressElapsedMilliseconds, setCompressElapsedMilliseconds] = useState<number>(0);
   const [decompressElapsedMilliseconds, setDecompressElapsedMilliseconds] = useState<number>(0);
+
+  const ZECK_FLAG_BIG_ENDIAN = 0x01;
 
   const STORAGE_KEY = "zeckendorf_compression_log";
 
@@ -133,39 +141,42 @@ const Index = (): JSX.Element => {
     };
   }, [isDecompressing]);
 
-  const handleCompress = useCallback(async (files: File[]) => {
-    if (files.length === 0) return;
+  const handleCompress = useCallback(async (filesToCompress: File[]) => {
+    if (filesToCompress.length === 0) return;
 
-    if (files.length > 1) {
+    if (filesToCompress.length > 1) {
       toast.error("Zeckendorf compression only supports single file compression. Please drop one file at a time.");
       return;
     }
 
-    const maybeFile = files[0];
-    if (!maybeFile) return;
-    const file = maybeFile;
+    // TODO: handle multiple files. And/or indicate to the user that multiple files are not supported for now.
+    const maybeFirstFileToCompress = filesToCompress[0];
+    if (!maybeFirstFileToCompress) return;
+    const fileToCompress = maybeFirstFileToCompress;
     setIsCompressing(true);
     const startTime = Date.now();
 
     try {
-      const result = await compressFileWithZeckendorf(file, () => {});
+      const compressionResult = await compressFileWithZeckendorf(fileToCompress, () => {});
       const elapsedTime = Date.now() - startTime;
 
-      if (result.success) {
-        downloadBlob(result.blob, result.filename);
+      if (compressionResult.success) {
+        downloadBlob(compressionResult.blob, compressionResult.filename);
         
-        const originalSize = file.size;
-        const compressedSize = result.blob.size;
-        const ratio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+        const originalSize = fileToCompress.size;
+        const compressedContentSize = compressionResult.compressedContentSize;
+        const totalFileSize = compressionResult.totalFileSize;
+        const ratio = ((1 - compressedContentSize / originalSize) * 100).toFixed(1);
         
         // Add successful compression to log
         const newEntry: CompressionLogEntry = {
           id: crypto.randomUUID(),
           type: "compress",
-          filename: file.name,
+          filename: fileToCompress.name,
           originalSize,
-          compressedSize,
-          compressionType: `zeckendorf_${result.endianness}`,
+          compressedContentSize: compressedContentSize,
+          totalFileSize,
+          compressionType: `zeckendorf_${compressionResult.endianness}`,
           compressionLevel: "auto",
           success: true,
           elapsedTime,
@@ -173,18 +184,18 @@ const Index = (): JSX.Element => {
         };
         
         setLogEntries(prev => [newEntry, ...prev]);
-        toast.success(`Compressed with ${result.endianness === "be" ? "big endian" : "little endian"}. Saved ${ratio}% (${formatBytes(originalSize)} → ${formatBytes(compressedSize)})`);
-      } else if (result.success === false) {
+        toast.success(`Compressed with ${compressionResult.endianness === "be" ? "big endian" : "little endian"}. Saved ${ratio}% (${formatBytes(originalSize)} → ${formatBytes(compressedContentSize)}). Total file size: ${formatBytes(totalFileSize)}`);
+      } else if (compressionResult.success === false) {
         // Log failed compression attempt
         const failedEntry: CompressionLogEntry = {
           id: crypto.randomUUID(),
           type: "compress",
-          filename: file.name,
-          originalSize: result.originalSize,
+          filename: fileToCompress.name,
+          originalSize: compressionResult.originalSize,
           success: false,
           error: "Compression did not reduce file size",
-          beSize: result.beSize,
-          leSize: result.leSize,
+          beSize: compressionResult.beSize,
+          leSize: compressionResult.leSize,
           elapsedTime,
           timestamp: new Date(),
         };
@@ -194,9 +205,9 @@ const Index = (): JSX.Element => {
         // Show failure dialog
         setCompressionFailureDialog({
           open: true,
-          originalSize: result.originalSize,
-          beSize: result.beSize,
-          leSize: result.leSize,
+          originalSize: compressionResult.originalSize,
+          beSize: compressionResult.beSize,
+          leSize: compressionResult.leSize,
         });
       }
     } catch (error) {
@@ -207,8 +218,8 @@ const Index = (): JSX.Element => {
       const errorEntry: CompressionLogEntry = {
         id: crypto.randomUUID(),
         type: "compress",
-        filename: file.name,
-        originalSize: file.size,
+        filename: fileToCompress.name,
+        originalSize: fileToCompress.size,
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
         elapsedTime,
@@ -222,56 +233,58 @@ const Index = (): JSX.Element => {
     }
   }, []);
 
-  const handleDecompress = useCallback(async (files: File[]) => {
-    if (files.length === 0) return;
+  const handleDecompress = useCallback(async (filesToDecompress: File[]) => {
+    if (filesToDecompress.length === 0) return;
 
-    if (files.length > 1) {
+    if (filesToDecompress.length > 1) {
       toast.error("Please drop one file at a time for decompression.");
       return;
     }
 
-    const maybeFile = files[0];
-    if (!maybeFile) return;
-    const file = maybeFile;
+    const maybeFirstZeckFileToDecompress = filesToDecompress[0];
+    if (!maybeFirstZeckFileToDecompress) return;
+    const zeckFileToDecompress = maybeFirstZeckFileToDecompress;
     setIsDecompressing(true);
     const startTime = Date.now();
 
     try {
-      const result = await decompressFileWithZeckendorf(file, () => {});
+      const decompressionResult = await decompressZeckFile(zeckFileToDecompress, () => {});
       const elapsedTime = Date.now() - startTime;
 
-      if ("error" in result) {
+      if ("error" in decompressionResult) {
         // Log failed decompression attempt
         const failedEntry: CompressionLogEntry = {
           id: crypto.randomUUID(),
           type: "decompress",
-          filename: file.name,
-          originalSize: file.size,
+          filename: zeckFileToDecompress.name,
+          originalSize: zeckFileToDecompress.size,
           success: false,
-          error: result.error,
+          error: decompressionResult.error,
           elapsedTime,
           timestamp: new Date(),
         };
         
         setLogEntries(prev => [failedEntry, ...prev]);
-        toast.error(result.error);
+        toast.error(decompressionResult.error);
       } else {
-        downloadBlob(result.blob, result.filename);
+        downloadBlob(decompressionResult.blob, decompressionResult.filename);
         
         // Log successful decompression
         const successEntry: CompressionLogEntry = {
           id: crypto.randomUUID(),
           type: "decompress",
-          filename: file.name,
-          originalSize: file.size,
-          decompressedSize: result.blob.size,
+          filename: zeckFileToDecompress.name,
+          originalSize: decompressionResult.totalFileSize, // Total .zeck file size
+          compressedContentSize: decompressionResult.compressedContentSize, // Compressed content size (without header)
+          totalFileSize: decompressionResult.totalFileSize, // Total .zeck file size (with header)
+          decompressedSize: decompressionResult.blob.size,
           success: true,
           elapsedTime,
           timestamp: new Date(),
         };
         
         setLogEntries(prev => [successEntry, ...prev]);
-        toast.success(`Decompressed file: ${result.filename}`);
+        toast.success(`Decompressed file: ${decompressionResult.filename}`);
       }
     } catch (error) {
       const elapsedTime = Date.now() - startTime;
@@ -281,8 +294,8 @@ const Index = (): JSX.Element => {
       const errorEntry: CompressionLogEntry = {
         id: crypto.randomUUID(),
         type: "decompress",
-        filename: file.name,
-        originalSize: file.size,
+        filename: zeckFileToDecompress.name,
+        originalSize: zeckFileToDecompress.size,
         success: false,
         error: error instanceof Error ? error.message : "Unknown error",
         elapsedTime,
@@ -383,15 +396,31 @@ const Index = (): JSX.Element => {
     }
   };
 
-  const handleDownloadSampleCompressedFileBE = useCallback( () => {
+  const handleDownloadSampleCompressedFileBE = useCallback((): void => {
     try {
-      // Create 100 bytes of 0xFF, which represents an All Ones Zeckendorf Number
-      const sampleCompressedData = new Uint8Array(100);
-      sampleCompressedData.fill(0xFF);
+      const sampleSize = 100;
+      // Create sampleSize bytes of 0xFF, which represents an All Ones Zeckendorf Number
+      const compressedData = new Uint8Array(sampleSize);
+      compressedData.fill(0xFF);
+      
+      // Decompress to determine the original size
+      const decompressedData = padless_zeckendorf_decompress_be_dangerous(compressedData);
+      const originalSize = decompressedData.length;
+      
+      // Create a minimal ZeckFile object as a sample (big endian)
+      const sampleZeckFile: ZeckFile = {
+        version: 1,
+        original_size: originalSize,
+        flags: ZECK_FLAG_BIG_ENDIAN, // big endian
+        compressed_data: Array.from(compressedData),
+      };
+      
+      // Serialize to bytes using the WASM function
+      const sampleZeckFileBytes = zeck_file_to_bytes(sampleZeckFile);
                   
       // Create blob and download
-      const blob = new Blob([sampleCompressedData]);
-      downloadBlob(blob, "100bytesCompressed.zbe");
+      const sampleZeckFileBlob = new Blob([new Uint8Array(sampleZeckFileBytes)]);
+      downloadBlob(sampleZeckFileBlob, `${sampleSize}Plus10BytesCompressedSample.bin.zeck`);
       toast.success("Sample compressed file (big endian) downloaded successfully");
     } catch (error) {
       console.error("Error generating sample file:", error);
@@ -401,13 +430,30 @@ const Index = (): JSX.Element => {
 
   const handleDownloadSampleCompressedFileLE = useCallback((): void => {
     try {
-      // Create 100 bytes of 0xFF, which represents an All Ones Zeckendorf Number
-      const sampleCompressedData = new Uint8Array(100);
-      sampleCompressedData.fill(0xFF);
+      const sampleSize = 100;
+      // Create sampleSize bytes of 0xFF, which represents an All Ones Zeckendorf Number
+      const compressedData = new Uint8Array(sampleSize);
+      compressedData.fill(0xFF);
       
+      // Decompress to determine the original size
+      const decompressedData = padless_zeckendorf_decompress_le_dangerous(compressedData);
+      const originalSize = decompressedData.length;
+      
+      // Create a minimal ZeckFile object as a sample (little endian)
+      // This is just a sample - a real .zeck file would be generated by compression
+      const sampleZeckFile: ZeckFile = {
+        version: 1,
+        original_size: originalSize,
+        flags: 0, // little endian
+        compressed_data: Array.from(compressedData),
+      };
+      
+      // Serialize to bytes using the WASM function
+      const sampleZeckFileBytes = zeck_file_to_bytes(sampleZeckFile);
+                  
       // Create blob and download
-      const blob = new Blob([sampleCompressedData]);
-      downloadBlob(blob, "100bytesCompressed.zle");
+      const sampleZeckFileBlob = new Blob([new Uint8Array(sampleZeckFileBytes)]);
+      downloadBlob(sampleZeckFileBlob, `${sampleSize}Plus10BytesCompressedSample.bin.zeck`);
       toast.success("Sample compressed file (little endian) downloaded successfully");
     } catch (error) {
       console.error("Error generating sample file:", error);
@@ -415,18 +461,19 @@ const Index = (): JSX.Element => {
     }
   }, []);
 
-  const handleDownloadWellCompressibleBE = useCallback(async () => {
+  const handleDownloadWellCompressibleBE = useCallback(() => {
     try {
-      // Create 100 bytes of 0xFF (compressed representation)
-      const compressedData = new Uint8Array(100);
+      const sampleSize = 100;
+      // Create sampleSize bytes of 0xFF, which represents an All Ones Zeckendorf Number
+      const compressedData = new Uint8Array(sampleSize);
       compressedData.fill(0xFF);
       
       // Decompress using big endian to get the original data that compresses well
-      const decompressed = await decompressUint8Array(compressedData, "be");
+      const decompressedData = padless_zeckendorf_decompress_be_dangerous(compressedData);
       
       // Create blob and download
-      const blob = new Blob([new Uint8Array(decompressed)]);
-      downloadBlob(blob, "wellCompressibleBE.bin");
+      const wellCompressibleBEBlob = new Blob([new Uint8Array(decompressedData)]);
+      downloadBlob(wellCompressibleBEBlob, `${sampleSize}BytesWellCompressibleBE.bin`);
       toast.success("Well compressible file (big endian) downloaded successfully");
     } catch (error) {
       console.error("Error generating well compressible file:", error);
@@ -434,18 +481,19 @@ const Index = (): JSX.Element => {
     }
   }, []);
 
-  const handleDownloadWellCompressibleLE = useCallback(async () => {
+  const handleDownloadWellCompressibleLE = useCallback(() => {
     try {
-      // Create 100 bytes of 0xFF (compressed representation)
-      const compressedData = new Uint8Array(100);
+      const sampleSize = 100;
+      // Create sampleSize bytes of 0xFF, which represents an All Ones Zeckendorf Number
+      const compressedData = new Uint8Array(sampleSize);
       compressedData.fill(0xFF);
       
       // Decompress using little endian to get the original data that compresses well
-      const decompressed = await decompressUint8Array(compressedData, "le");
+      const decompressedData = padless_zeckendorf_decompress_le_dangerous(compressedData);
       
       // Create blob and download
-      const blob = new Blob([new Uint8Array(decompressed)]);
-      downloadBlob(blob, "wellCompressibleLE.bin");
+      const wellCompressibleLEBlob = new Blob([new Uint8Array(decompressedData)]);
+      downloadBlob(wellCompressibleLEBlob, `${sampleSize}BytesWellCompressibleLE.bin`);
       toast.success("Well compressible file (little endian) downloaded successfully");
     } catch (error) {
       console.error("Error generating well compressible file:", error);
@@ -453,123 +501,157 @@ const Index = (): JSX.Element => {
     }
   }, []);
 
-  const validateSize = useCallback((): number | null => {
-    const maybeSize = parseInt(customDataSize, 10);
+  const validateCustomDataContentSize = useCallback((): number | null => {
+    const maybeCustomDataContentSize = parseInt(customDataContentSize, 10);
     
-    if (isNaN(maybeSize) || maybeSize <= 0) {
+    if (isNaN(maybeCustomDataContentSize) || maybeCustomDataContentSize <= 0) {
       toast.error("Please enter a valid positive number");
       return null;
     }
     
-    if (maybeSize > MAX_GENERATABLE_FILE_SIZE) {
+    if (maybeCustomDataContentSize > MAX_GENERATABLE_FILE_SIZE) {
       toast.error(`Size must be at most ${MAX_GENERATABLE_FILE_SIZE.toLocaleString()} bytes`);
       return null;
     }
 
-    return maybeSize;
-  }, [customDataSize]);
+    return maybeCustomDataContentSize;
+  }, [customDataContentSize]);
 
-  const handleGenerateWellCompressibleBE = useCallback(async () => {
-    const maybeSize = validateSize();
-    if (maybeSize === null) return;
+  const handleGenerateWellCompressibleBE = useCallback(() => {
+    const maybeCustomDataContentSize = validateCustomDataContentSize();
+    if (maybeCustomDataContentSize === null) return;
+    const customDataContentSize = maybeCustomDataContentSize;
 
     setGeneratingType("wellCompressibleBE");
 
     try {
       // Generate compressed data of the specified size (filled with 0xFF)
-      const compressedData = new Uint8Array(maybeSize);
+      const compressedData = new Uint8Array(customDataContentSize);
       compressedData.fill(0xFF);
       
       // Decompress to get the original well compressible data
-      const decompressed = await decompressUint8Array(compressedData, "be");
+      const decompressedData = padless_zeckendorf_decompress_be_dangerous(compressedData);
       
       // Download well compressible file
-      const blob = new Blob([new Uint8Array(decompressed)]);
-      downloadBlob(blob, `wellCompressibleBE_${maybeSize}bytes.bin`);
+      const wellCompressibleBEBlob = new Blob([new Uint8Array(decompressedData)]);
+      downloadBlob(wellCompressibleBEBlob, `${customDataContentSize}BytesWellCompressibleBE.bin`);
       
-      toast.success(`Generated well compressible file (BE): ${formatBytes(maybeSize)} compressed → ${formatBytes(decompressed.length)} original`);
+      toast.success(`Generated well compressible file (BE): ${formatBytes(customDataContentSize)} compressed → ${formatBytes(decompressedData.length)} original`);
     } catch (error) {
       console.error("Error generating well compressible file (BE):", error);
       toast.error("Failed to generate well compressible file");
     } finally {
       setGeneratingType(null);
     }
-  }, [validateSize]);
+  }, [validateCustomDataContentSize]);
 
-  const handleGenerateWellCompressibleLE = useCallback(async () => {
-    const maybeSize = validateSize();
-    if (maybeSize === null) return;
+  const handleGenerateWellCompressibleLE = useCallback(() => {
+    const maybeCustomDataContentSize = validateCustomDataContentSize();
+    if (maybeCustomDataContentSize === null) return;
+    const customDataContentSize = maybeCustomDataContentSize;
 
     setGeneratingType("wellCompressibleLE");
 
     try {
       // Generate compressed data of the specified size (filled with 0xFF)
-      const compressedData = new Uint8Array(maybeSize);
+      const compressedData = new Uint8Array(customDataContentSize);
       compressedData.fill(0xFF);
       
       // Decompress to get the original well compressible data
-      const decompressed = await decompressUint8Array(compressedData, "le");
+      const decompressedData = padless_zeckendorf_decompress_le_dangerous(compressedData);
       
       // Download well compressible file
-      const blob = new Blob([new Uint8Array(decompressed)]);
-      downloadBlob(blob, `wellCompressibleLE_${maybeSize}bytes.bin`);
+      const wellCompressibleLEBlob = new Blob([new Uint8Array(decompressedData)]);
+      downloadBlob(wellCompressibleLEBlob, `${customDataContentSize}BytesWellCompressibleLE.bin`);
       
-      toast.success(`Generated well compressible file (LE): ${formatBytes(maybeSize)} compressed → ${formatBytes(decompressed.length)} original`);
+      toast.success(`Generated well compressible file (LE): ${formatBytes(customDataContentSize)} compressed → ${formatBytes(decompressedData.length)} original`);
     } catch (error) {
       console.error("Error generating well compressible file (LE):", error);
       toast.error("Failed to generate well compressible file");
     } finally {
       setGeneratingType(null);
     }
-  }, [validateSize]);
+  }, [validateCustomDataContentSize]);
 
   const handleGenerateCompressedBE = useCallback((): void => {
-    const maybeSize = validateSize();
-    if (maybeSize === null) return;
+    const maybeCustomDataContentSize = validateCustomDataContentSize();
+    if (maybeCustomDataContentSize === null) return;
+    const customDataContentSize = maybeCustomDataContentSize;
 
     setGeneratingType("compressedBE");
 
     try {
       // Generate compressed data of the specified size (filled with 0xFF)
-      const compressedData = new Uint8Array(maybeSize);
+      const compressedData = new Uint8Array(customDataContentSize);
       compressedData.fill(0xFF);
       
-      // Download compressed file
-      const blob = new Blob([compressedData]);
-      downloadBlob(blob, `compressedBE_${maybeSize}bytes.zbe`);
+      // Decompress to determine the original size
+      const decompressedData = padless_zeckendorf_decompress_be_dangerous(compressedData);
+      const originalSize = decompressedData.length;
       
-      toast.success(`Generated compressed file (BE): ${formatBytes(maybeSize)}`);
+      // Create a ZeckFile object with sample compressed data (big endian)
+      const sampleZeckFile: ZeckFile = {
+        version: 1,
+        original_size: originalSize,
+        flags: ZECK_FLAG_BIG_ENDIAN, // big endian
+        compressed_data: Array.from(compressedData),
+      };
+      
+      // Serialize to bytes using the WASM function
+      const zeckFileBytes = zeck_file_to_bytes(sampleZeckFile);
+      
+      // Download compressed file
+      const zeckFileBlob = new Blob([new Uint8Array(zeckFileBytes)]);
+      downloadBlob(zeckFileBlob, `${customDataContentSize}Plus10BytesCompressedBE.bin.zeck`);
+      
+      toast.success(`Generated compressed file (BE): ${formatBytes(customDataContentSize)}`);
     } catch (error) {
       console.error("Error generating compressed file (BE):", error);
       toast.error("Failed to generate compressed file");
     } finally {
       setGeneratingType(null);
     }
-  }, [validateSize]);
+  }, [validateCustomDataContentSize]);
 
   const handleGenerateCompressedLE = useCallback((): void => {
-    const maybeSize = validateSize();
-    if (maybeSize === null) return;
+    const maybeCustomDataContentSize = validateCustomDataContentSize();
+    if (maybeCustomDataContentSize === null) return;
+    const customDataContentSize = maybeCustomDataContentSize;
 
     setGeneratingType("compressedLE");
 
     try {
       // Generate compressed data of the specified size (filled with 0xFF)
-      const compressedData = new Uint8Array(maybeSize);
+      const compressedData = new Uint8Array(customDataContentSize);
       compressedData.fill(0xFF);
       
-      // Download compressed file
-      const blob = new Blob([compressedData]);
-      downloadBlob(blob, `compressedLE_${maybeSize}bytes.zle`);
+      // Decompress to determine the original size
+      const decompressedData = padless_zeckendorf_decompress_le_dangerous(compressedData);
+      const originalSize = decompressedData.length;
       
-      toast.success(`Generated compressed file (LE): ${formatBytes(maybeSize)}`);
+      // Create a ZeckFile object with sample compressed data (little endian)
+      const sampleZeckFile: ZeckFile = {
+        version: 1,
+        original_size: originalSize,
+        flags: 0, // little endian
+        compressed_data: Array.from(compressedData),
+      };
+      
+      // Serialize to bytes using the WASM function
+      const zeckFileBytes = zeck_file_to_bytes(sampleZeckFile);
+      
+      // Download compressed file
+      const zeckFileBlob = new Blob([new Uint8Array(zeckFileBytes)]);
+      downloadBlob(zeckFileBlob, `${customDataContentSize}Plus10BytesCompressedLE.bin.zeck`);
+      
+      toast.success(`Generated compressed file (LE): ${formatBytes(customDataContentSize)}`);
     } catch (error) {
       console.error("Error generating compressed file (LE):", error);
       toast.error("Failed to generate compressed file");
     } finally {
       setGeneratingType(null);
     }
-  }, [validateSize]);
+  }, [validateCustomDataContentSize]);
 
   return (
     <div className="min-h-screen bg-background relative overflow-hidden">
@@ -736,7 +818,7 @@ const Index = (): JSX.Element => {
           <section aria-labelledby="decompress-heading">
             <h2 id="decompress-heading" className="text-2xl font-semibold mb-4">Decompress</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              Drop a compressed file (.zbe or .zle) to decompress. The compression type is detected from the file extension.{" "}
+              Drop a compressed file (.zeck) to decompress.{" "}
               <button
                 onClick={() => {
                   handleDownloadSampleCompressedFileBE();
@@ -744,7 +826,7 @@ const Index = (): JSX.Element => {
                 className="text-primary hover:underline font-medium"
                 type="button"
               >
-                Download a sample compressed file (.zbe)
+                Download a sample compressed file (.zeck, BE)
               </button>
               {" "}or{" "}
               <button
@@ -754,7 +836,7 @@ const Index = (): JSX.Element => {
                 className="text-primary hover:underline font-medium"
                 type="button"
               >
-                Download a sample compressed file (.zle)
+                Download a sample compressed file (.zeck, LE)
               </button>
               {" "}to try it out. The sample file consists of 100 bytes of an all ones Zeckendorf Number.
             </p>
@@ -960,29 +1042,29 @@ const Index = (): JSX.Element => {
           <DialogHeader>
             <DialogTitle>Generate Custom Sized Data</DialogTitle>
             <DialogDescription>
-              Enter the size in bytes and choose which file type to generate. Each file is generated on-demand when you click its button. A maximum of {MAX_GENERATABLE_FILE_SIZE.toLocaleString()} bytes is set due to memory pressure during compression and decompression. Wanna help improve the algorithm? Check out the <a href="https://github.com/pRizz/zeckendorf" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Rust code</a> and submit a pull request!
+              Enter the content size in bytes and choose which file type to generate. Each file is generated on-demand when you click its button. <b>For .zeck files, the total file size will be 10 bytes larger due to the header.</b> A maximum of {MAX_GENERATABLE_FILE_SIZE.toLocaleString()} bytes is set due to memory pressure during compression and decompression. Wanna help improve the algorithm? Check out the <a href="https://github.com/pRizz/zeckendorf" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">Rust code</a> and submit a pull request!
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label htmlFor="data-size">Size in bytes (max {MAX_GENERATABLE_FILE_SIZE.toLocaleString()})</Label>
+              <Label htmlFor="data-size">Content size in bytes (max {MAX_GENERATABLE_FILE_SIZE.toLocaleString()})</Label>
               <Input
                 id="data-size"
                 type="number"
                 min="1"
                 max={MAX_GENERATABLE_FILE_SIZE}
-                value={customDataSize}
+                value={customDataContentSize}
                 onChange={(e) => {
                   const value = e.target.value;
                   const maybeNum = parseInt(value, 10);
                   if (value === "" || (!isNaN(maybeNum) && maybeNum > 0 && maybeNum <= MAX_GENERATABLE_FILE_SIZE)) {
-                    setCustomDataSize(value);
+                    setCustomDataContentSize(value);
                   }
                 }}
-                placeholder="Enter size in bytes"
+                placeholder="Enter content size in bytes"
                 disabled={generatingType !== null}
               />
-              {customDataSize && (isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE) && (
+              {customDataContentSize && (isNaN(parseInt(customDataContentSize, 10)) || parseInt(customDataContentSize, 10) <= 0 || parseInt(customDataContentSize, 10) > MAX_GENERATABLE_FILE_SIZE) && (
                 <p className="text-sm text-destructive">
                   Please enter a number between 1 and {MAX_GENERATABLE_FILE_SIZE.toLocaleString()}
                 </p>
@@ -995,7 +1077,7 @@ const Index = (): JSX.Element => {
                   onClick={() => {
                     void handleGenerateWellCompressibleBE();
                   }}
-                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
+                  disabled={generatingType !== null || !customDataContentSize || isNaN(parseInt(customDataContentSize, 10)) || parseInt(customDataContentSize, 10) <= 0 || parseInt(customDataContentSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
                 >
@@ -1012,7 +1094,7 @@ const Index = (): JSX.Element => {
                   onClick={() => {
                     void handleGenerateWellCompressibleLE();
                   }}
-                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
+                  disabled={generatingType !== null || !customDataContentSize || isNaN(parseInt(customDataContentSize, 10)) || parseInt(customDataContentSize, 10) <= 0 || parseInt(customDataContentSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
                 >
@@ -1026,13 +1108,15 @@ const Index = (): JSX.Element => {
                   )}
                 </Button>
               </div>
-              <div className="text-sm font-medium mt-4">Compressed Data</div>
+              <div className="text-sm font-medium mt-4">Compressed Data (.zeck) 
+                {validateCustomDataContentSize() && <span className="text-xs text-muted-foreground">{" "}(total file size will be {ZECK_FILE_HEADER_SIZE + validateCustomDataContentSize()!} bytes)</span>}
+                </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Button
                   onClick={() => {
                     handleGenerateCompressedBE();
                   }}
-                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
+                  disabled={generatingType !== null || !customDataContentSize || isNaN(parseInt(customDataContentSize, 10)) || parseInt(customDataContentSize, 10) <= 0 || parseInt(customDataContentSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
                 >
@@ -1049,7 +1133,7 @@ const Index = (): JSX.Element => {
                   onClick={() => {
                     handleGenerateCompressedLE();
                   }}
-                  disabled={generatingType !== null || !customDataSize || isNaN(parseInt(customDataSize, 10)) || parseInt(customDataSize, 10) <= 0 || parseInt(customDataSize, 10) > MAX_GENERATABLE_FILE_SIZE}
+                  disabled={generatingType !== null || !customDataContentSize || isNaN(parseInt(customDataContentSize, 10)) || parseInt(customDataContentSize, 10) <= 0 || parseInt(customDataContentSize, 10) > MAX_GENERATABLE_FILE_SIZE}
                   variant="outline"
                   className="w-full"
                 >
@@ -1070,7 +1154,7 @@ const Index = (): JSX.Element => {
               variant="outline" 
               onClick={() => {
                 setCustomDataDialogOpen(false);
-                setCustomDataSize("");
+                setCustomDataContentSize("");
               }}
               disabled={generatingType !== null}
               className="w-full sm:w-auto"

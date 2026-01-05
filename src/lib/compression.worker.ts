@@ -1,10 +1,12 @@
 /// <reference lib="webworker" />
 
 import {
-  zeckendorf_compress_be,
-  zeckendorf_compress_le,
-  zeckendorf_decompress_be,
-  zeckendorf_decompress_le,
+  compress_zeck_best,
+  decompress_zeck_file,
+  deserialize_zeck_file,
+  zeck_file_is_big_endian,
+  zeck_file_to_bytes,
+  zeck_file_total_size,
 } from "@/../zeckendorf_rs_wasm/zeck.js";
 import type { WorkerRequest, WorkerResponse } from "./compression.types";
 
@@ -36,69 +38,71 @@ const sendError = (id: string, error: string): void => {
  * Handles compression requests
  */
 const handleCompress = (message: Extract<WorkerRequest, { type: "compress" }>): void => {
-  const { id, data, filename } = message;
-  const originalSize = data.length;
+  const { id, dataToCompress: originalData, filename } = message;
+  const originalSize = originalData.length;
 
   sendProgress(id, 30);
 
-  // Try big endian compression first
-  const compressedBE = zeckendorf_compress_be(data);
-  const beSize = compressedBE.length;
-
-  sendProgress(id, 60);
-
-  // Try little endian compression
-  const compressedLE = zeckendorf_compress_le(data);
-  const leSize = compressedLE.length;
+  const bestCompressionResult = compress_zeck_best(originalData);
 
   sendProgress(id, 90);
 
-  // Check if big endian compression is better
-  if (beSize < originalSize) {
-    const baseName = filename.replace(/\.[^/.]+$/, "");
+  if ("BigEndianBest" in bestCompressionResult) {
+    const { zeck_file } = bestCompressionResult.BigEndianBest;
+    const totalFileSize = zeck_file_total_size(zeck_file);
+    const compressedContentSize = zeck_file.compressed_data.length;
+    const serializedZeckFile = zeck_file_to_bytes(zeck_file);
+    const endianness = zeck_file_is_big_endian(zeck_file) ? "be" : "le";
     self.postMessage(
       {
         type: "compress",
         id,
         success: true,
-        blob: compressedBE,
-        filename: `${baseName}.zbe`,
-        endianness: "be",
+        compressedData: serializedZeckFile,
+        filename: `${filename}.zeck`,
+        endianness,
         originalSize,
-        compressedSize: beSize,
+        compressedContentSize,
+        totalFileSize,
       } satisfies WorkerResponse,
-      [compressedBE.buffer]
+      [serializedZeckFile.buffer]
     );
     return;
   }
 
-  // Check if little endian compression is better
-  if (leSize < originalSize) {
-    const baseName = filename.replace(/\.[^/.]+$/, "");
+  if ("LittleEndianBest" in bestCompressionResult) {
+    const { zeck_file } = bestCompressionResult.LittleEndianBest;
+    const totalFileSize = zeck_file_total_size(zeck_file);
+    const compressedContentSize = zeck_file.compressed_data.length;
+    const serializedZeckFile = zeck_file_to_bytes(zeck_file);
+    const endianness = zeck_file_is_big_endian(zeck_file) ? "be" : "le";
     self.postMessage(
       {
         type: "compress",
         id,
         success: true,
-        blob: compressedLE,
-        filename: `${baseName}.zle`,
-        endianness: "le",
+        compressedData: serializedZeckFile,
+        filename: `${filename}.zeck`,
+        endianness,
         originalSize,
-        compressedSize: leSize,
+        compressedContentSize,
+        totalFileSize,
       } satisfies WorkerResponse,
-      [compressedLE.buffer]
+      [serializedZeckFile.buffer]
     );
     return;
   }
 
-  // Both compressions produced larger files
+  // Neither compression produced a smaller file
+  const { be_size, le_size } = bestCompressionResult.Neither;
+
   self.postMessage({
     type: "compress",
     id,
     success: false,
     originalSize,
-    beSize,
-    leSize,
+    beSize: be_size,
+    leSize: le_size,
   } satisfies WorkerResponse);
 };
 
@@ -106,56 +110,59 @@ const handleCompress = (message: Extract<WorkerRequest, { type: "compress" }>): 
  * Handles decompression requests
  */
 const handleDecompress = (message: Extract<WorkerRequest, { type: "decompress" }>): void => {
-  const { id, data, filename } = message;
+  const { id, zeckFileData, filename } = message;
 
   sendProgress(id, 30);
 
   const fileName = filename.toLowerCase();
 
-  // Handle big endian decompression
-  if (fileName.endsWith(".zbe")) {
-    const decompressed = zeckendorf_decompress_be(data);
-    const originalFilename = filename.replace(/\.zbe$/i, "");
+  // FIXME: we probably don't need to check that the file ends in .zeck. A user could just change a random file's extension to .zeck and it would pass this check anyways.
+  if (!fileName.endsWith(".zeck")) {
+    self.postMessage({
+      type: "decompress",
+      id,
+      success: false,
+      error:
+        "Could not detect which compression was used. File extension must be .zeck.",
+    } satisfies WorkerResponse);
+    return;
+  }
+
+  try {
+    // Deserialize the ZeckFile from bytes
+    const zeckFile = deserialize_zeck_file(zeckFileData);
+    const compressedContentSize = zeckFile.compressed_data.length;
+    const totalFileSize = zeck_file_total_size(zeckFile);
+    
+    sendProgress(id, 60);
+
+    // Decompress the ZeckFile
+    const decompressedData = decompress_zeck_file(zeckFile);
+    const originalFilename = filename.replace(/\.zeck$/i, "");
+
+    sendProgress(id, 90);
 
     self.postMessage(
       {
         type: "decompress",
         id,
         success: true,
-        blob: decompressed,
+        decompressedData,
         filename: originalFilename,
+        compressedContentSize,
+        totalFileSize,
       } satisfies WorkerResponse,
-      [decompressed.buffer]
+      [decompressedData.buffer]
     );
-    return;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    self.postMessage({
+      type: "decompress",
+      id,
+      success: false,
+      error: `Failed to decompress .zeck file: ${errorMessage}`,
+    } satisfies WorkerResponse);
   }
-
-  // Handle little endian decompression
-  if (fileName.endsWith(".zle")) {
-    const decompressed = zeckendorf_decompress_le(data);
-    const originalFilename = filename.replace(/\.zle$/i, "");
-
-    self.postMessage(
-      {
-        type: "decompress",
-        id,
-        success: true,
-        blob: decompressed,
-        filename: originalFilename,
-      } satisfies WorkerResponse,
-      [decompressed.buffer]
-    );
-    return;
-  }
-
-  // Unknown compression type
-  self.postMessage({
-    type: "decompress",
-    id,
-    success: false,
-    error:
-      "Could not detect which compression was used. File extension must be .zbe (big endian) or .zle (little endian).",
-  } satisfies WorkerResponse);
 };
 
 // Handle messages from the main thread

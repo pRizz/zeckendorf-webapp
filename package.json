@@ -13,6 +13,19 @@
   "bugs": {
     "url": "https://github.com/pRizz/zeckendorf-webapp/issues"
   },
+  "license": "MIT",
+  "scripts": {
+    "init-git-submodules": "git submodule update --init --recursive",
+    "update-zeckendorf-rs-dep": "scripts/update-zeckendorf-rs-dep.sh",
+    "build-zeckendorf-rs-wasm": "scripts/build-zeckendorf-rs-wasm.sh",
+    "dev": "pnpm run build-zeckendorf-rs-wasm && vite",
+    "build": "pnpm run build-zeckendorf-rs-wasm && vite build",
+    "build:dev": "pnpm run build-zeckendorf-rs-wasm && vite build --mode development",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "tsc:build": "pnpm run build-zeckendorf-rs-wasm && tsc --build",
+    "preview": "pnpm run build-zeckendorf-rs-wasm && vite preview"
+  },
   "keywords": [
     "zeckendorf",
     "zeckendorf-compression",
@@ -36,19 +49,6 @@
     "client-side-compression",
     "zero-upload-compression"
   ],
-  "license": "MIT",
-  "scripts": {
-    "init-git-submodules": "git submodule update --init --recursive",
-    "update-zeckendorf-rs-dep": "scripts/update-zeckendorf-rs-dep.sh",
-    "build-zeckendorf-rs-wasm": "scripts/build-zeckendorf-rs-wasm.sh",
-    "dev": "pnpm run build-zeckendorf-rs-wasm && vite",
-    "build": "pnpm run build-zeckendorf-rs-wasm && vite build",
-    "build:dev": "pnpm run build-zeckendorf-rs-wasm && vite build --mode development",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "tsc:build": "tsc --build",
-    "preview": "pnpm run build-zeckendorf-rs-wasm && vite preview"
-  },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.11",

@@ -1,7 +1,7 @@
 import CompressionWorker from "./compression.worker?worker";
-import type { CompressionResult, WorkerRequest, WorkerResponse } from "./compression.types";
+import type { CompressionResult, DecompressionResult, WorkerRequest, WorkerResponse } from "./compression.types";
 
-export type { CompressionResult };
+export type { CompressionResult, DecompressionResult };
 
 // Singleton worker instance
 let maybeWorker: Worker | null = null;
@@ -21,48 +21,50 @@ export const initializeWorker = (): void => {
 
 /**
  * Compresses a file using Zeckendorf compression, automatically selecting the best endianness.
- * Returns the compressed file if either endianness produces a smaller file, otherwise returns failure info.
+ * Returns the compressed file if compression produces a smaller file, otherwise returns failure info.
  * All compression work is done off the main thread in a web worker.
  */
 export const compressFileWithZeckendorf = async (
-  file: File,
+  fileToCompress: File,
   onProgress: (progress: number) => void
 ): Promise<CompressionResult> => {
-  const arrayBuffer = await file.arrayBuffer();
-  const uint8Array = new Uint8Array(arrayBuffer);
+  const dataToCompressArrayBuffer = await fileToCompress.arrayBuffer();
+  const dataToCompressUint8Array = new Uint8Array(dataToCompressArrayBuffer);
   const worker = getWorker();
   const id = crypto.randomUUID();
 
   return new Promise<CompressionResult>((resolve, reject) => {
     const messageHandler = (event: MessageEvent<WorkerResponse>): void => {
-      const response = event.data;
+      const workerResponse = event.data;
 
-      if (response.id !== id) {
+      if (workerResponse.id !== id) {
         return;
       }
 
-      if (response.type === "progress") {
-        onProgress(response.progress);
-      } else if (response.type === "compress") {
+      if (workerResponse.type === "progress") {
+        onProgress(workerResponse.progress);
+      } else if (workerResponse.type === "compress") {
         worker.removeEventListener("message", messageHandler);
-        if (response.success === true) {
+        if (workerResponse.success === true) {
           resolve({
             success: true,
-            blob: new Blob([new Uint8Array(response.blob)]),
-            filename: response.filename,
-            endianness: response.endianness,
+            blob: new Blob([new Uint8Array(workerResponse.compressedData)]),
+            filename: workerResponse.filename,
+            endianness: workerResponse.endianness,
+            compressedContentSize: workerResponse.compressedContentSize,
+            totalFileSize: workerResponse.totalFileSize,
           });
-        } else if (response.success === false) {
+        } else if (workerResponse.success === false) {
           resolve({
             success: false,
-            originalSize: response.originalSize,
-            beSize: response.beSize,
-            leSize: response.leSize,
+            originalSize: workerResponse.originalSize,
+            beSize: workerResponse.beSize,
+            leSize: workerResponse.leSize,
           });
         }
-      } else if (response.type === "error") {
+      } else if (workerResponse.type === "error") {
         worker.removeEventListener("message", messageHandler);
-        reject(new Error(response.error));
+        reject(new Error(workerResponse.error));
       }
     };
 
@@ -71,50 +73,53 @@ export const compressFileWithZeckendorf = async (
     const message: WorkerRequest = {
       type: "compress",
       id,
-      data: uint8Array,
-      filename: file.name,
+      dataToCompress: dataToCompressUint8Array,
+      filename: fileToCompress.name,
     };
 
     // Transfer the ArrayBuffer ownership to the worker (zero-copy transfer)
-    worker.postMessage(message, [uint8Array.buffer]);
+    worker.postMessage(message, [dataToCompressUint8Array.buffer]);
   });
 };
 
 /**
- * Internal helper function that handles decompression via worker.
+ * Internal helper function that handles decompression of Zeck file data via worker.
  * Returns the decompressed data and filename, or throws an error.
  */
-const decompressViaWorker = async (
-  data: Uint8Array,
+const decompressZeckFileDataViaWorker = async (
+  zeckFileData: Uint8Array,
   filename: string,
   onProgress?: (progress: number) => void
-): Promise<{ blob: Uint8Array; filename: string }> => {
+): Promise<DecompressionResult> => {
   const worker = getWorker();
   const id = crypto.randomUUID();
 
-  return new Promise<{ blob: Uint8Array; filename: string }>((resolve, reject) => {
+  return new Promise<DecompressionResult>((resolve, reject) => {
     const messageHandler = (event: MessageEvent<WorkerResponse>): void => {
-      const response = event.data;
+      const workerResponse = event.data;
 
-      if (response.id !== id) {
+      if (workerResponse.id !== id) {
         return;
       }
 
-      if (response.type === "progress" && onProgress) {
-        onProgress(response.progress);
-      } else if (response.type === "decompress") {
+      if (workerResponse.type === "progress" && onProgress) {
+        onProgress(workerResponse.progress);
+      } else if (workerResponse.type === "decompress") {
         worker.removeEventListener("message", messageHandler);
-        if (response.success === true) {
+        if (workerResponse.success === true) {
           resolve({
-            blob: response.blob,
-            filename: response.filename,
+            success: true,
+            blob: new Blob([new Uint8Array(workerResponse.decompressedData)]),
+            filename: workerResponse.filename,
+            compressedContentSize: workerResponse.compressedContentSize,
+            totalFileSize: workerResponse.totalFileSize,
           });
-        } else if (response.success === false) {
-          reject(new Error(response.error));
+        } else if (workerResponse.success === false) {
+          reject(new Error(workerResponse.error));
         }
-      } else if (response.type === "error") {
+      } else if (workerResponse.type === "error") {
         worker.removeEventListener("message", messageHandler);
-        reject(new Error(response.error));
+        reject(new Error(workerResponse.error));
       }
     };
 
@@ -123,32 +128,29 @@ const decompressViaWorker = async (
     const message: WorkerRequest = {
       type: "decompress",
       id,
-      data,
+      zeckFileData,
       filename,
     };
 
     // Transfer the ArrayBuffer ownership to the worker (zero-copy transfer)
-    worker.postMessage(message, [data.buffer]);
+    worker.postMessage(message, [zeckFileData.buffer]);
   });
 };
 
 /**
- * Decompresses a file based on its extension (.zbe for big endian, .zle for little endian).
+ * Decompresses a .zeck file and returns a `Promise<DecompressionResult>`.
+ * 
  * All decompression work is done off the main thread in a web worker.
  */
-export const decompressFileWithZeckendorf = async (
-  file: File,
+export const decompressZeckFile = async (
+  zeckFile: File,
   onProgress: (progress: number) => void
-): Promise<{ blob: Blob; filename: string } | { error: string }> => {
-  const arrayBuffer = await file.arrayBuffer();
-  const uint8Array = new Uint8Array(arrayBuffer);
+): Promise<DecompressionResult> => {
+  const zeckFileArrayBuffer = await zeckFile.arrayBuffer();
+  const zeckFileUint8ArrayData = new Uint8Array(zeckFileArrayBuffer);
 
   try {
-    const result = await decompressViaWorker(uint8Array, file.name, onProgress);
-    return {
-      blob: new Blob([new Uint8Array(result.blob)]),
-      filename: result.filename,
-    };
+    return await decompressZeckFileDataViaWorker(zeckFileUint8ArrayData, zeckFile.name, onProgress);
   } catch (error) {
     return {
       error: error instanceof Error ? error.message : "Unknown error",
@@ -165,61 +167,4 @@ export const downloadBlob = (blob: Blob, filename: string): void => {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-};
-
-/**
- * Decompresses a Uint8Array directly using the specified endianness.
- * This is a helper function for operations that don't involve File objects.
- * All decompression work is done off the main thread in a web worker.
- */
-export const decompressUint8Array = async (
-  data: Uint8Array,
-  endianness: "be" | "le",
-  onProgress?: (progress: number) => void
-): Promise<Uint8Array> => {
-  const filename = endianness === "be" ? "data.zbe" : "data.zle";
-  const result = await decompressViaWorker(data, filename, onProgress);
-  return new Uint8Array(result.blob);
-};
-
-// Legacy functions for backward compatibility (if needed elsewhere)
-// Note: This function still uses the worker for consistency
-export const compressFiles = async (
-  files: File[],
-  format: "zeckendorf_be" | "zeckendorf_le",
-  _level: "fast" | "balanced" | "maximum",
-  onProgress: (progress: number) => void
-): Promise<{ blob: Blob; filename: string }> => {
-  if (files.length !== 1) {
-    throw new Error("Zeckendorf compression only supports single file compression");
-  }
-
-  const maybeFile = files[0];
-  if (!maybeFile) {
-    throw new Error("No file provided");
-  }
-  const result = await compressFileWithZeckendorf(maybeFile, onProgress);
-
-  if (!result.success) {
-    throw new Error("Compression failed");
-  }
-
-  // If the result doesn't match the requested format, we need to recompress
-  // This is a legacy function, so we'll just return what we got
-  if (
-    (format === "zeckendorf_be" && result.endianness !== "be") ||
-    (format === "zeckendorf_le" && result.endianness !== "le")
-  ) {
-    // For legacy compatibility, we'll still return the result
-    // but note that it may not match the requested format
-    return {
-      blob: result.blob,
-      filename: result.filename,
-    };
-  }
-
-  return {
-    blob: result.blob,
-    filename: result.filename,
-  };
 };

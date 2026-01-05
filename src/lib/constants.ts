@@ -9,3 +9,5 @@ export const MEDIUM_ARTICLE_URL = "https://medium.com/p/8713770f5598/";
  * Set due to memory pressure during compression and decompression.
  */
 export const MAX_GENERATABLE_FILE_SIZE = 15_000 /* bytes */ ;
+
+export const ZECK_FILE_HEADER_SIZE = 10 /* bytes */ ;
