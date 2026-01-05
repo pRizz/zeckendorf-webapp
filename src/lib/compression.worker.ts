@@ -7,6 +7,7 @@ import {
   zeck_file_is_big_endian,
   zeck_file_to_bytes,
   zeck_file_total_size,
+  type ZeckFormatError,
 } from "@/../zeckendorf_rs_wasm/zeck.js";
 import type { WorkerRequest, WorkerResponse } from "./compression.types";
 
@@ -32,6 +33,53 @@ const sendError = (id: string, error: string): void => {
     id,
     error,
   } satisfies WorkerResponse);
+};
+
+/**
+ * Checks if an error is a ZeckFormatError and formats a user-friendly error message
+ */
+const formatZeckFormatError = (maybeError: unknown): string | null => {
+  if (
+    typeof maybeError !== "object" ||
+    maybeError === null ||
+    !("HeaderTooShort" in maybeError || "UnsupportedVersion" in maybeError || "ReservedFlagsSet" in maybeError || "CompressionFailed" in maybeError || "DecompressedTooLarge" in maybeError || "DataSizeTooLarge" in maybeError)
+  ) {
+    return null;
+  }
+
+  const error = maybeError as ZeckFormatError;
+
+  if ("HeaderTooShort" in error) {
+    const { actual_length, required_length } = error.HeaderTooShort;
+    return `Invalid .zeck file header: header is too short (actual: ${actual_length} bytes, required: ${required_length} bytes)`;
+  }
+
+  if ("UnsupportedVersion" in error) {
+    const { found_version, supported_version } = error.UnsupportedVersion;
+    return `Unsupported .zeck file version: found version ${found_version}, but only version ${supported_version} is supported`;
+  }
+
+  if ("ReservedFlagsSet" in error) {
+    const { flags } = error.ReservedFlagsSet;
+    return `Invalid .zeck file: reserved flags are set (flags: 0x${flags.toString(16)})`;
+  }
+
+  if ("CompressionFailed" in error) {
+    const { original_size, be_size, le_size } = error.CompressionFailed;
+    return `Compression failed: original size ${original_size} bytes, big endian size ${be_size} bytes, little endian size ${le_size} bytes`;
+  }
+
+  if ("DecompressedTooLarge" in error) {
+    const { expected_size, actual_size } = error.DecompressedTooLarge;
+    return `Decompression error: decompressed data is too large (expected: ${expected_size} bytes, actual: ${actual_size} bytes)`;
+  }
+
+  if ("DataSizeTooLarge" in error) {
+    const { size } = error.DataSizeTooLarge;
+    return `Data size too large: ${size} bytes exceeds the maximum supported size`;
+  }
+
+  return null;
 };
 
 /**
@@ -155,7 +203,9 @@ const handleDecompress = (message: Extract<WorkerRequest, { type: "decompress" }
       [decompressedData.buffer]
     );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    console.error("Decompression error:", error);
+    const zeckFormatErrorMessage = formatZeckFormatError(error);
+    const errorMessage = zeckFormatErrorMessage ?? (error instanceof Error ? error.message : "Unknown error");
     self.postMessage({
       type: "decompress",
       id,

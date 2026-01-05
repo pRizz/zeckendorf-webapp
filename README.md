@@ -109,6 +109,8 @@ The app is configured with the base path `/zeckendorf-webapp/` for GitHub Pages 
 - **Compression Not Guaranteed**: Some inputs may result in larger output
 - **Compression Effectiveness**: Decreases as input size increases
 - **Browser Support**: Requires a modern browser with WebAssembly support
+- **Single File Processing**: Only one file can be processed at a time. Attempting to process multiple files will show a warning dialog
+- **File Size Warning**: Files larger than 10KB may cause high CPU usage, memory issues, or browser tab lockup. A warning dialog will be shown before processing files larger than this threshold, allowing you to proceed or cancel
 
 ## License
 

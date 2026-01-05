@@ -11,7 +11,7 @@ import {
   type ZeckFile,
 } from "@/../zeckendorf_rs_wasm/zeck.js";
 import { formatBytes, formatElapsedTimeShort } from "@/lib/utils";
-import { MEDIUM_ARTICLE_URL, MAX_GENERATABLE_FILE_SIZE, ZECK_FILE_HEADER_SIZE } from "@/lib/constants";
+import { MEDIUM_ARTICLE_URL, MAX_GENERATABLE_FILE_SIZE, ZECK_FILE_HEADER_SIZE, FILE_SIZE_WARNING_THRESHOLD } from "@/lib/constants";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +42,19 @@ const Index = (): JSX.Element => {
   const [elapsedMilliseconds, setElapsedMilliseconds] = useState<number>(0);
   const [compressElapsedMilliseconds, setCompressElapsedMilliseconds] = useState<number>(0);
   const [decompressElapsedMilliseconds, setDecompressElapsedMilliseconds] = useState<number>(0);
+  const [multipleFilesWarningDialog, setMultipleFilesWarningDialog] = useState<{
+    open: boolean;
+    action: "compress" | "decompress";
+  } | null>(null);
+  const [largeFileWarningDialog, setLargeFileWarningDialog] = useState<{
+    open: boolean;
+    file: File;
+    action: "compress" | "decompress";
+  } | null>(null);
+  const [noFilesWarningDialog, setNoFilesWarningDialog] = useState<{
+    open: boolean;
+    action: "compress" | "decompress";
+  } | null>(null);
 
   const ZECK_FLAG_BIG_ENDIAN = 0x01;
 
@@ -141,18 +154,7 @@ const Index = (): JSX.Element => {
     };
   }, [isDecompressing]);
 
-  const handleCompress = useCallback(async (filesToCompress: File[]) => {
-    if (filesToCompress.length === 0) return;
-
-    if (filesToCompress.length > 1) {
-      toast.error("Zeckendorf compression only supports single file compression. Please drop one file at a time.");
-      return;
-    }
-
-    // TODO: handle multiple files. And/or indicate to the user that multiple files are not supported for now.
-    const maybeFirstFileToCompress = filesToCompress[0];
-    if (!maybeFirstFileToCompress) return;
-    const fileToCompress = maybeFirstFileToCompress;
+  const proceedWithCompression = useCallback(async (fileToCompress: File) => {
     setIsCompressing(true);
     const startTime = Date.now();
 
@@ -233,17 +235,41 @@ const Index = (): JSX.Element => {
     }
   }, []);
 
-  const handleDecompress = useCallback(async (filesToDecompress: File[]) => {
-    if (filesToDecompress.length === 0) return;
-
-    if (filesToDecompress.length > 1) {
-      toast.error("Please drop one file at a time for decompression.");
+  const handleCompress = useCallback((filesToCompress: File[]) => {
+    if (filesToCompress.length === 0) {
+      setNoFilesWarningDialog({
+        open: true,
+        action: "compress",
+      });
       return;
     }
 
-    const maybeFirstZeckFileToDecompress = filesToDecompress[0];
-    if (!maybeFirstZeckFileToDecompress) return;
-    const zeckFileToDecompress = maybeFirstZeckFileToDecompress;
+    if (filesToCompress.length > 1) {
+      setMultipleFilesWarningDialog({
+        open: true,
+        action: "compress",
+      });
+      return;
+    }
+
+    const maybeFirstFileToCompress = filesToCompress[0];
+    if (!maybeFirstFileToCompress) return;
+    const fileToCompress = maybeFirstFileToCompress;
+
+    // Check file size and show warning if larger than threshold
+    if (fileToCompress.size > FILE_SIZE_WARNING_THRESHOLD) {
+      setLargeFileWarningDialog({
+        open: true,
+        file: fileToCompress,
+        action: "compress",
+      });
+      return;
+    }
+
+    void proceedWithCompression(fileToCompress);
+  }, [proceedWithCompression]);
+
+  const proceedWithDecompression = useCallback(async (zeckFileToDecompress: File) => {
     setIsDecompressing(true);
     const startTime = Date.now();
 
@@ -308,6 +334,40 @@ const Index = (): JSX.Element => {
       setIsDecompressing(false);
     }
   }, []);
+
+  const handleDecompress = useCallback((filesToDecompress: File[]) => {
+    if (filesToDecompress.length === 0) {
+      setNoFilesWarningDialog({
+        open: true,
+        action: "decompress",
+      });
+      return;
+    }
+
+    if (filesToDecompress.length > 1) {
+      setMultipleFilesWarningDialog({
+        open: true,
+        action: "decompress",
+      });
+      return;
+    }
+
+    const maybeFirstZeckFileToDecompress = filesToDecompress[0];
+    if (!maybeFirstZeckFileToDecompress) return;
+    const zeckFileToDecompress = maybeFirstZeckFileToDecompress;
+
+    // Check file size and show warning if larger than threshold
+    if (zeckFileToDecompress.size > FILE_SIZE_WARNING_THRESHOLD) {
+      setLargeFileWarningDialog({
+        open: true,
+        file: zeckFileToDecompress,
+        action: "decompress",
+      });
+      return;
+    }
+
+    void proceedWithDecompression(zeckFileToDecompress);
+  }, [proceedWithDecompression]);
 
   const handleDragCompress = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -1033,6 +1093,96 @@ const Index = (): JSX.Element => {
           </div>
           <DialogFooter>
             <Button onClick={() => setCompressionFailureDialog(null)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Multiple Files Warning Dialog */}
+      <Dialog 
+        open={multipleFilesWarningDialog?.open ?? false} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setMultipleFilesWarningDialog(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Multiple Files Not Supported</DialogTitle>
+            <DialogDescription>
+              Processing multiple files at once is not supported. Please process one file at a time.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setMultipleFilesWarningDialog(null)}>OK</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Large File Warning Dialog */}
+      <Dialog 
+        open={largeFileWarningDialog?.open ?? false} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setLargeFileWarningDialog(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Large File Warning</DialogTitle>
+            <DialogDescription>
+              The file you selected ({largeFileWarningDialog?.file.name}) is larger than {formatBytes(FILE_SIZE_WARNING_THRESHOLD)} ({formatBytes(largeFileWarningDialog?.file.size ?? 0)}). Processing files larger than this limit may cause high CPU usage, memory issues, or cause your browser tab to lock up.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <p className="text-sm text-muted-foreground">
+              Do you want to proceed with {largeFileWarningDialog?.action === "compress" ? "compression" : "decompression"} anyway?
+            </p>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setLargeFileWarningDialog(null)}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (largeFileWarningDialog?.file && largeFileWarningDialog?.action) {
+                  if (largeFileWarningDialog.action === "compress") {
+                    void proceedWithCompression(largeFileWarningDialog.file);
+                  } else {
+                    void proceedWithDecompression(largeFileWarningDialog.file);
+                  }
+                  setLargeFileWarningDialog(null);
+                }
+              }}
+            >
+              Proceed
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* No Files Warning Dialog */}
+      <Dialog 
+        open={noFilesWarningDialog?.open ?? false} 
+        onOpenChange={(open) => {
+          if (!open) {
+            setNoFilesWarningDialog(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>No File Selected</DialogTitle>
+            <DialogDescription>
+              No file was selected for {noFilesWarningDialog?.action === "compress" ? "compression" : "decompression"}. Please select a file to process.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => setNoFilesWarningDialog(null)}>OK</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
