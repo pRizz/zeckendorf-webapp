@@ -2,12 +2,14 @@
  * Shared types for compression operations and worker communication
  */
 
+export type Endianness = "be" | "le";
+
 export type CompressionResult = 
-  | { success: true; blob: Blob; filename: string; endianness: "be" | "le"; compressedContentSize: number; totalFileSize: number }
+  | { success: true; blob: Blob; filename: string; endianness: Endianness; compressedContentSize: number; totalFileSize: number }
   | { success: false; originalSize: number; beSize: number; leSize: number };
 
 export type DecompressionResult =
-  | { success: true; blob: Blob; filename: string; compressedContentSize: number; totalFileSize: number }
+  | { success: true; blob: Blob; filename: string; endianness: Endianness; compressedContentSize: number; totalFileSize: number }
   | { error: string };
 
 /**
@@ -37,7 +39,7 @@ export type WorkerResponse =
       success: true;
       compressedData: Uint8Array;
       filename: string;
-      endianness: "be" | "le";
+      endianness: Endianness;
       originalSize: number;
       compressedContentSize: number; // Compressed content size (without header)
       totalFileSize: number; // Total .zeck file size (with header)
@@ -51,11 +53,19 @@ export type WorkerResponse =
       leSize: number;
     }
   | {
+      type: "compress";
+      id: string;
+      success: false;
+      error: string;
+      originalSize: number;
+    }
+  | {
       type: "decompress";
       id: string;
       success: true;
       decompressedData: Uint8Array;
       filename: string;
+      endianness: Endianness;
       compressedContentSize: number; // Compressed content size (without header)
       totalFileSize: number; // Total .zeck file size (with header)
     }

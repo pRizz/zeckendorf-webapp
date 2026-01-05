@@ -17,3 +17,13 @@ export const ZECK_FILE_HEADER_SIZE = 10 /* bytes */ ;
  * Files larger than this may cause memory issues or browser tab lockup.
  */
 export const FILE_SIZE_WARNING_THRESHOLD = 10 * 1024 /* 10KB */ ;
+
+/**
+ * Storage key for compression log in localStorage
+ */
+export const COMPRESSION_LOG_STORAGE_KEY = "zeckendorf_compression_log";
+
+/**
+ * Zeckendorf file format flag for big endian
+ */
+export const ZECK_FLAG_BIG_ENDIAN = 0x01;

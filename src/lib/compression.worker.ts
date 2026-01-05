@@ -91,67 +91,81 @@ const handleCompress = (message: Extract<WorkerRequest, { type: "compress" }>): 
 
   sendProgress(id, 30);
 
-  const bestCompressionResult = compress_zeck_best(originalData);
+  try {
+    const bestCompressionResult = compress_zeck_best(originalData);
 
-  sendProgress(id, 90);
+    sendProgress(id, 90);
 
-  if ("BigEndianBest" in bestCompressionResult) {
-    const { zeck_file } = bestCompressionResult.BigEndianBest;
-    const totalFileSize = zeck_file_total_size(zeck_file);
-    const compressedContentSize = zeck_file.compressed_data.length;
-    const serializedZeckFile = zeck_file_to_bytes(zeck_file);
-    const endianness = zeck_file_is_big_endian(zeck_file) ? "be" : "le";
-    self.postMessage(
-      {
-        type: "compress",
-        id,
-        success: true,
-        compressedData: serializedZeckFile,
-        filename: `${filename}.zeck`,
-        endianness,
-        originalSize,
-        compressedContentSize,
-        totalFileSize,
-      } satisfies WorkerResponse,
-      [serializedZeckFile.buffer]
-    );
-    return;
+    if ("BigEndianBest" in bestCompressionResult) {
+      const { zeck_file } = bestCompressionResult.BigEndianBest;
+      const totalFileSize = zeck_file_total_size(zeck_file);
+      const compressedContentSize = zeck_file.compressed_data.length;
+      const serializedZeckFile = zeck_file_to_bytes(zeck_file);
+      const endianness = zeck_file_is_big_endian(zeck_file) ? "be" : "le";
+      self.postMessage(
+        {
+          type: "compress",
+          id,
+          success: true,
+          compressedData: serializedZeckFile,
+          filename: `${filename}.zeck`,
+          endianness,
+          originalSize,
+          compressedContentSize,
+          totalFileSize,
+        } satisfies WorkerResponse,
+        [serializedZeckFile.buffer]
+      );
+      return;
+    }
+
+    if ("LittleEndianBest" in bestCompressionResult) {
+      const { zeck_file } = bestCompressionResult.LittleEndianBest;
+      const totalFileSize = zeck_file_total_size(zeck_file);
+      const compressedContentSize = zeck_file.compressed_data.length;
+      const serializedZeckFile = zeck_file_to_bytes(zeck_file);
+      const endianness = zeck_file_is_big_endian(zeck_file) ? "be" : "le";
+      self.postMessage(
+        {
+          type: "compress",
+          id,
+          success: true,
+          compressedData: serializedZeckFile,
+          filename: `${filename}.zeck`,
+          endianness,
+          originalSize,
+          compressedContentSize,
+          totalFileSize,
+        } satisfies WorkerResponse,
+        [serializedZeckFile.buffer]
+      );
+      return;
+    }
+
+    // Neither compression produced a smaller file
+    const { be_size, le_size } = bestCompressionResult.Neither;
+
+    self.postMessage({
+      type: "compress",
+      id,
+      success: false,
+      originalSize,
+      beSize: be_size,
+      leSize: le_size,
+    } satisfies WorkerResponse);
+  } catch (error) {
+    console.error("Compression error:", error);
+    const zeckFormatErrorMessage = formatZeckFormatError(error);
+    const errorMessage = zeckFormatErrorMessage ?? (error instanceof Error ? error.message : "Unknown error");
+    const errorResponse: WorkerResponse = {
+      type: "compress",
+      id,
+      success: false,
+      error: `Failed to compress file: ${errorMessage}`,
+      originalSize,
+    };
+    self.postMessage(errorResponse);
   }
-
-  if ("LittleEndianBest" in bestCompressionResult) {
-    const { zeck_file } = bestCompressionResult.LittleEndianBest;
-    const totalFileSize = zeck_file_total_size(zeck_file);
-    const compressedContentSize = zeck_file.compressed_data.length;
-    const serializedZeckFile = zeck_file_to_bytes(zeck_file);
-    const endianness = zeck_file_is_big_endian(zeck_file) ? "be" : "le";
-    self.postMessage(
-      {
-        type: "compress",
-        id,
-        success: true,
-        compressedData: serializedZeckFile,
-        filename: `${filename}.zeck`,
-        endianness,
-        originalSize,
-        compressedContentSize,
-        totalFileSize,
-      } satisfies WorkerResponse,
-      [serializedZeckFile.buffer]
-    );
-    return;
-  }
-
-  // Neither compression produced a smaller file
-  const { be_size, le_size } = bestCompressionResult.Neither;
-
-  self.postMessage({
-    type: "compress",
-    id,
-    success: false,
-    originalSize,
-    beSize: be_size,
-    leSize: le_size,
-  } satisfies WorkerResponse);
 };
 
 /**
@@ -181,6 +195,7 @@ const handleDecompress = (message: Extract<WorkerRequest, { type: "decompress" }
     const zeckFile = deserialize_zeck_file(zeckFileData);
     const compressedContentSize = zeckFile.compressed_data.length;
     const totalFileSize = zeck_file_total_size(zeckFile);
+    const endianness = zeck_file_is_big_endian(zeckFile) ? "be" : "le";
     
     sendProgress(id, 60);
 
@@ -197,6 +212,7 @@ const handleDecompress = (message: Extract<WorkerRequest, { type: "decompress" }
         success: true,
         decompressedData,
         filename: originalFilename,
+        endianness,
         compressedContentSize,
         totalFileSize,
       } satisfies WorkerResponse,

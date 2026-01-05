@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronDown, ChevronUp, Trash2, FileArchive, Check, X, FileDown, FileUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatBytes, formatElapsedTimeLong } from "@/lib/utils";
+import type { Endianness } from "@/lib/compression.types";
 
 export interface CompressionLogEntry {
   id: string;
@@ -12,7 +13,7 @@ export interface CompressionLogEntry {
   compressedContentSize?: number; // For compression: compressed content size (without header). For decompression: compressed content size from .zeck file
   totalFileSize?: number; // For compression: total .zeck file size (with header). For decompression: total .zeck file size
   decompressedSize?: number; // Only for decompression entries
-  compressionType?: string; // Only for compression entries
+  compressionType?: Endianness; // Endianness used for compression/decompression ("be" or "le")
   compressionLevel?: string; // Only for compression entries
   success: boolean;
   error?: string; // Only for failed entries
@@ -35,6 +36,11 @@ const formatDateTime = (date: Date): string => {
     hour: "2-digit", 
     minute: "2-digit" 
   });
+};
+
+const formatEndianness = (endianness: Endianness): string => {
+  const endiannessName = endianness === "be" ? "big" : "little";
+  return `Data was interpreted as a ${endiannessName} endian integer`;
 };
 
 export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.Element => {
@@ -97,16 +103,26 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.E
                 entries.map((entry, index) => {
                 const isCompress = entry.type === "compress";
                 const isDecompress = entry.type === "decompress";
-                // Calculate savings for compressed content (without header)
-                const compressedContentSavedPercent = entry.compressedContentSize !== undefined
+                // Calculate savings for compressed content (without header) - for compression
+                const compressedContentSavedPercent = entry.compressedContentSize !== undefined && isCompress
                   ? ((1 - entry.compressedContentSize / entry.originalSize) * 100).toFixed(1)
                   : null;
                 const isCompressedContentPositive = compressedContentSavedPercent ? parseFloat(compressedContentSavedPercent) > 0 : false;
-                // Calculate savings for total file size (with header)
-                const totalFileSizeSavedPercent = entry.totalFileSize !== undefined
+                // Calculate savings for total file size (with header) - for compression
+                const totalFileSizeSavedPercent = entry.totalFileSize !== undefined && isCompress
                   ? ((1 - entry.totalFileSize / entry.originalSize) * 100).toFixed(1)
                   : null;
                 const isTotalFileSizePositive = totalFileSizeSavedPercent ? parseFloat(totalFileSizeSavedPercent) > 0 : false;
+                // Calculate expansion/recovery for decompression (from compressed content to decompressed)
+                const decompressedContentGainedPercent = entry.compressedContentSize !== undefined && entry.decompressedSize !== undefined && isDecompress
+                  ? (((entry.decompressedSize - entry.compressedContentSize) / entry.compressedContentSize) * 100).toFixed(1)
+                  : null;
+                const isDecompressedContentGainedPositive = decompressedContentGainedPercent ? parseFloat(decompressedContentGainedPercent) > 0 : false;
+                // Calculate expansion/recovery for decompression (from total .zeck file size to decompressed)
+                const decompressedTotalFileSizeGainedPercent = entry.totalFileSize !== undefined && entry.decompressedSize !== undefined && isDecompress
+                  ? (((entry.decompressedSize - entry.totalFileSize) / entry.totalFileSize) * 100).toFixed(1)
+                  : null;
+                const isDecompressedTotalFileSizeGainedPositive = decompressedTotalFileSizeGainedPercent ? parseFloat(decompressedTotalFileSizeGainedPercent) > 0 : false;
 
                 return (
                   <motion.div
@@ -166,7 +182,7 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.E
                                   )}
                                 </div>
                                 {entry.totalFileSize !== undefined && (
-                                  <div className="flex items-center gap-2 text-xs text-muted-foreground/80 pl-1">
+                                  <div className="flex items-center gap-2 text-xs text-muted-foreground/80">
                                     <span className="text-muted-foreground/60">Total .zeck file size:</span>
                                     <span className="font-mono">{formatBytes(entry.totalFileSize)}</span>
                                     {totalFileSizeSavedPercent !== null && (
@@ -191,11 +207,21 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.E
                                       <span>→</span>
                                       <span className="font-mono">{formatBytes(entry.decompressedSize)}</span>
                                       <span className="text-muted-foreground/70">(compressed content → decompressed)</span>
+                                      {decompressedContentGainedPercent !== null && (
+                                        <span className="font-semibold text-primary">
+                                          {isDecompressedContentGainedPositive ? "+" : ""}{decompressedContentGainedPercent}%
+                                        </span>
+                                      )}
                                     </div>
                                     {entry.totalFileSize !== undefined && (
-                                      <div className="flex items-center gap-2 text-xs text-muted-foreground/80 pl-1">
+                                      <div className="flex items-center gap-2 text-xs text-muted-foreground/80">
                                         <span className="text-muted-foreground/60">Total .zeck file size:</span>
                                         <span className="font-mono">{formatBytes(entry.totalFileSize)}</span>
+                                        {decompressedTotalFileSizeGainedPercent !== null && (
+                                          <span className="font-semibold text-primary">
+                                            {isDecompressedTotalFileSizeGainedPositive ? "+" : ""}{decompressedTotalFileSizeGainedPercent}%
+                                          </span>
+                                        )}
                                       </div>
                                     )}
                                   </>
@@ -230,8 +256,8 @@ export const CompressionLog = ({ entries, onClear }: CompressionLogProps): JSX.E
                       </div>
                       <div className="text-right shrink-0">
                         {entry.compressionType && (
-                          <span className="inline-block px-2 py-0.5 text-xs font-mono rounded bg-secondary text-secondary-foreground mb-1">
-                            {entry.compressionType.toUpperCase()}
+                          <span className="inline-block px-2 py-0.5 text-xs rounded bg-secondary text-secondary-foreground mb-1">
+                            {formatEndianness(entry.compressionType)}
                           </span>
                         )}
                         {entry.elapsedTime !== undefined && (

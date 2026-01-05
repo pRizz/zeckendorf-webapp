@@ -55,12 +55,17 @@ export const compressFileWithZeckendorf = async (
             totalFileSize: workerResponse.totalFileSize,
           });
         } else if (workerResponse.success === false) {
-          resolve({
-            success: false,
-            originalSize: workerResponse.originalSize,
-            beSize: workerResponse.beSize,
-            leSize: workerResponse.leSize,
-          });
+          // Check if this is an error response (has error property) or a "neither" response (has beSize/leSize)
+          if ("error" in workerResponse) {
+            reject(new Error(workerResponse.error));
+          } else {
+            resolve({
+              success: false,
+              originalSize: workerResponse.originalSize,
+              beSize: workerResponse.beSize,
+              leSize: workerResponse.leSize,
+            });
+          }
         }
       } else if (workerResponse.type === "error") {
         worker.removeEventListener("message", messageHandler);
@@ -111,6 +116,7 @@ const decompressZeckFileDataViaWorker = async (
             success: true,
             blob: new Blob([new Uint8Array(workerResponse.decompressedData)]),
             filename: workerResponse.filename,
+            endianness: workerResponse.endianness,
             compressedContentSize: workerResponse.compressedContentSize,
             totalFileSize: workerResponse.totalFileSize,
           });
