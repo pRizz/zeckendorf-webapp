@@ -1,6 +1,6 @@
 {
   "name": "zeckendorf-webapp",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Free, open-source web application for compressing and decompressing files using the Zeckendorf representation algorithm. All processing happens locally in your browser.",
   "type": "module",
   "private": false,
